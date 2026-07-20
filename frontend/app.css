@@ -2278,23 +2278,6 @@ body[data-theme="signature"] .lg-stage{
   .lg-panel{padding:var(--sp-4)}
 }
 
-/* ═══ COPYRIGHT — one component, used on login, About and Settings ═══════ */
-.copyright{text-align:center; color:var(--tx2); font-size:var(--fs-small); line-height:var(--lh-base)}
-.copyright .cr-product{margin-bottom:var(--sp-2)}
-.copyright .cr-product b{
-  display:block; color:var(--tx); font-size:var(--fs-body);
-  letter-spacing:.08em; text-transform:uppercase;
-}
-.copyright .cr-product span{display:block; font-size:var(--fs-small); opacity:.85}
-.copyright .cr-line{font-size:var(--fs-small)}
-.copyright .cr-line b{color:var(--tx); font-weight:650}
-.copyright .cr-legal{margin-top:var(--sp-1); opacity:.72; font-size:var(--fs-micro)}
-.copyright.compact{padding-top:var(--sp-2); opacity:.9}
-.copyright.inset{
-  margin-top:var(--sp-5); padding-top:var(--sp-4);
-  border-top:var(--seam) solid var(--line-soft);
-}
-
 /* Contact-administrator dialog rows */
 .ca-grid{display:grid; gap:var(--sp-2); margin-top:var(--sp-2)}
 .ca-row{

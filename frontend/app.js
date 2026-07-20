@@ -182,9 +182,6 @@ async function boot() {
   });
   installContentProtection();
   wire("#contact-admin-btn", "click", contactAdminDialog);
-  // Copyright is rendered from the single COPYRIGHT definition, never inlined.
-  const crFoot = $("#login-copyright");
-  if (crFoot) crFoot.innerHTML = copyrightHTML("compact");
 
   fetch("/health").then(r => r.json()).then(h =>
     $("#login-plant").textContent = `${h.app} v${h.version} · server online`).catch(() => {});
@@ -234,24 +231,6 @@ function installContentProtection() {
     const k = e.key.toLowerCase();
     if ((k === 'c' || k === 'x') && !inExempt(document.activeElement)) e.preventDefault();
   });
-}
-
-/* ══ COPYRIGHT ════════════════════════════════════════════════════════════
-   One definition, rendered wherever the order requires it, so the wording can
-   never drift between the login page, About and Settings. */
-const COPYRIGHT = {
-  product: "SMS-2 IDOS",
-  tagline: "Steel Plant Digital Production Management System",
-  author:  "M. S. Vignesh",
-  year:    2026,
-};
-function copyrightHTML(variant) {
-  const c = COPYRIGHT;
-  return `<div class="copyright ${variant || ""}">
-    <div class="cr-product"><b>${c.product}</b><span>${c.tagline}</span></div>
-    <div class="cr-line">Designed &amp; developed by <b>${c.author}</b></div>
-    <div class="cr-line cr-legal">Copyright © ${c.year} ${c.author}. All rights reserved.</div>
-  </div>`;
 }
 
 /* Contact administrator — reachable from the login page, before any session
@@ -650,8 +629,6 @@ async function buildAuditReport(days) {
 
 <div class="ft">
   <div><b>SMS-2 IDOS</b> · Steel Plant Digital Production Management System</div>
-  <div>Designed &amp; developed by <b>M. S. Vignesh</b></div>
-  <div class="legal">Copyright © 2026 M. S. Vignesh. All rights reserved.</div>
   <div class="legal">Generated from live production records. Training heats are excluded throughout.</div>
 </div>
 
