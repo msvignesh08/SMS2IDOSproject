@@ -14,10 +14,12 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 DATA_DIR = os.environ.get("SMS2_DATA_DIR", os.path.join(BASE_DIR, "data"))
 os.makedirs(DATA_DIR, exist_ok=True)
 
-DATABASE_URL = os.environ.get(
-    "SMS2_DATABASE_URL",
-    f"sqlite:///{os.path.join(DATA_DIR, 'sms2_idos.db')}",
-)
+_DEFAULT_DB = f"sqlite:///{os.path.join(DATA_DIR, 'sms2_idos.db')}"
+# `os.environ.get(key, default)` only falls back when the key is ABSENT. Hosts
+# such as Render define declared-but-unset variables as an EMPTY STRING, which
+# would hand SQLAlchemy `create_engine("")` and crash the server on boot. Treat
+# blank (or whitespace) as "not configured" and use the SQLite default.
+DATABASE_URL = (os.environ.get("SMS2_DATABASE_URL") or "").strip() or _DEFAULT_DB
 
 SESSION_HOURS = int(os.environ.get("SMS2_SESSION_HOURS", "12"))
 BACKUP_DIR = os.environ.get("SMS2_BACKUP_DIR", os.path.join(DATA_DIR, "backups"))
