@@ -1,0 +1,2624 @@
+/* ================================================================
+   SMS-2 IDOS — Digital Command Center
+   Industrial usability before visual appeal (Final Industrial Reqs).
+   Glassmorphism as a degradable skin; three themes; Heat Rail signature.
+   System fonts only — zero internet dependency (11.3 intranet-first).
+   ================================================================ */
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PHASE 1 · THE DESIGN SYSTEM — single source of truth
+   ───────────────────────────────────────────────────────────────────────
+   This is the ONLY :root block in the file. It previously existed in five
+   places, redefining --radius three times with three different values, so
+   reading the top of the file gave the wrong answer. Everything below is
+   authoritative: if a value is not here, it does not belong in a component.
+
+   Theme-dependent values (surfaces, lines, text, shadow, blur) are NOT
+   here — they live in the four theme blocks so every theme carries a
+   complete set. A token defined in only some themes is a theme-specific
+   bug waiting to happen.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  /* ── BRAND & STATE ────────────────────────────────────────────────────
+     --accent is the molten amber and is re-set per module on <body>.
+     Never read --accent on :root for text — use --accent-tx, which is
+     resolved on <body> so it tracks the per-module accent. */
+  --accent:#FF8A3D;          /* molten amber — the melt */
+  --accent-soft:rgba(255,138,61,.16);
+  --ok:#37C2A0; --warn:#F5C542; --err:#E5484D; --info:#5B8DBE;
+  --ok-soft:rgba(55,194,160,.12);
+  /* State colours are chosen for dark surfaces; on paper they collapse
+     (cyan #00D4FF measured 1.65:1 on white). The saturated hue stays for
+     FILLS and borders, while TEXT uses these twins, overridden per theme. */
+  --ok-tx:var(--ok); --warn-tx:var(--warn); --err-tx:var(--err); --info-tx:var(--info);
+  --state-ready:#00D4FF;  --state-ready-tx:var(--state-ready);
+  --state-maint:#FF9E3D;  --state-maint-tx:var(--state-maint);
+  --warn-soft:rgba(245,197,66,.12);
+  --err-soft:rgba(229,72,77,.12);
+  --info-soft:rgba(91,141,190,.12);
+
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;
+  --mono:ui-monospace,"Cascadia Mono","Consolas",monospace;
+
+  /* ── RADIUS ───────────────────────────────────────────────────────────
+     Five steps. Controls sit one step tighter than the panels that hold
+     them, which is what reads as "engineered" rather than "bubbly". */
+  --radius-xs:6px;     /* chips, swatches, inline marks            */
+  --radius-s:9px;      /* inputs, small buttons                    */
+  --radius:10px;       /* buttons, cards, tiles, KPI — the default */
+  --radius-l:14px;     /* modals, drawer, sheets                   */
+  --radius-pill:99px;  /* tags, stage tabs                         */
+  --seam:1px;          /* the hairline that separates panels       */
+
+  /* ── SPACING RHYTHM — 4px industrial grid ───────────────────────────
+     Every padding, gap and margin resolves to one of these. Consistent
+     rhythm is what separates instrument-grade software from a template. */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px;
+  --sp-5:22px; --sp-6:30px; --sp-7:44px;
+
+  /* ── TYPE SCALE ─────────────────────────────────────────────────────
+     Dense where data lives, generous where the eye needs an anchor.
+     --fs-reading is the body default; --fs-4xl exists for wall displays. */
+  --fs-micro:10.5px;   /* uppercase labels, table headers, tags   */
+  --fs-small:12.5px;   /* secondary text, meta, captions          */
+  --fs-body:13.5px;    /* table cells, dense production data      */
+  --fs-base:14px;      /* buttons, inputs, primary reading size   */
+  --fs-reading:15px;   /* body copy default                       */
+  --fs-lg:16px;        /* card and section titles                 */
+  --fs-xl:19px;        /* dialog titles                           */
+  --fs-2xl:22px;       /* page titles                             */
+  --fs-3xl:28px;       /* KPI values                              */
+  --fs-4xl:34px;       /* KPI values on a wall display            */
+  --lh-tight:1.25; --lh-base:1.5;
+  --ls-label:.14em;    /* uppercase tracking — relative, so it scales */
+
+  /* ── MOTION ─────────────────────────────────────────────────────────
+     One easing curve for the whole product. Fast enough to feel
+     instrument-like, never decorative. */
+  --ease:cubic-bezier(.4,0,.2,1);
+  --dur-fast:.12s; --dur:.18s; --dur-slow:.28s;
+
+  /* ── STAGE COLOUR LANGUAGE ─────────────────────────────────────────────
+     The eight modules of the heat lifecycle. Defined ONCE here because the
+     Gantt bars and the Gantt legend both need them: the legend previously
+     re-declared all eleven swatches as hardcoded gradients in a JS template
+     string, guaranteeing the two would drift apart the first time a colour
+     was tuned. Both now read from these. */
+  --st-hot-metal:linear-gradient(90deg,#FF9A3D,#FF5C3D);
+  --st-eaf:linear-gradient(90deg,#FFC53D,#FF7A3D);
+  --st-zpf:linear-gradient(90deg,#FF8A5C,#FF4D7A);
+  --st-lrf:linear-gradient(90deg,#B44DFF,#FF4DA6);
+  --st-vd:linear-gradient(90deg,#7C4DFF,#00D4FF);
+  --st-caster:linear-gradient(90deg,#22E3A2,#00B8D9);
+  --st-quality:linear-gradient(90deg,#FFE07A,#FFB13D);
+  --st-review:linear-gradient(90deg,#8FE3C8,#37C2A0);
+  --st-delay:repeating-linear-gradient(135deg,rgba(229,72,77,.75) 0 5px,rgba(229,72,77,.35) 5px 10px);
+  --st-shutdown:repeating-linear-gradient(135deg,rgba(180,10,40,.9) 0 5px,rgba(60,0,10,.85) 5px 10px);
+  --st-event-route:#A78BFA;   /* route decision — deliberately not cyan */
+
+  /* ── PREMIUM GRADIENTS (moved here from a second :root block) ──────── */
+  --grad-molten:linear-gradient(135deg,#FFB13D,#FF8A3D 40%,#FF3D6E);
+  --grad-prod:linear-gradient(135deg,#2979FF,#22E3A2);
+  --grad-ai:linear-gradient(135deg,#7C4DFF,#00D4FF);
+  --grad-gold:linear-gradient(135deg,#FFD54D,#FF9E3D);
+  --grad-steel:linear-gradient(135deg,#8FA6C0,#00D4FF);
+  --grad-emerald:linear-gradient(135deg,#22E3A2,#00B8D9);
+  --grad-ruby:linear-gradient(135deg,#FF3D6E,#B3123E);
+  --grad-violet:linear-gradient(135deg,#B44DFF,#FF4DA6);
+}
+
+/* --accent-tx MUST resolve on <body>, not :root. On :root it is computed
+   against the default amber before body[data-view] has re-set --accent,
+   which silently defeated all eight per-module accents. */
+body{ --accent-tx:var(--accent); }
+[data-theme="dark"]{
+  --bg:#0B1020; --bg2:#111731; --surface:rgba(120,140,255,.055);
+  --surface-solid:#161D38; --line:rgba(140,160,255,.13);
+  --tx:#EEF1FB; --tx2:#8E9BC0; --glassblur:16px;
+  --shadow:0 8px 28px rgba(0,0,0,.45);
+  /* elevation ladder: canvas → raised → card → dialog */
+  --elev-1:#111731; --elev-2:#161D38; --elev-3:#1D2547;
+  --line-soft:rgba(140,160,255,.08);
+  --sh-1:0 1px 2px rgba(0,0,0,.32);
+  --sh-2:0 4px 16px rgba(0,0,0,.38);
+  --sh-3:0 14px 38px rgba(0,0,0,.52);
+  --focus-ring:rgba(255,138,61,.55);
+}
+[data-theme="black"]{
+  --bg:#000; --bg2:#030308; --surface:rgba(180,140,255,.055);
+  --surface-solid:#0A0A12; --line:rgba(200,170,255,.13);
+  --tx:#F2F0F7; --tx2:#9A93AE; --glassblur:15px;
+  --shadow:0 8px 28px rgba(0,0,0,.7);
+  --elev-1:#030308; --elev-2:#0A0A12; --elev-3:#12101E;
+  --line-soft:rgba(200,170,255,.07);
+  --sh-1:0 1px 2px rgba(0,0,0,.6);
+  --sh-2:0 4px 16px rgba(0,0,0,.66);
+  --sh-3:0 14px 38px rgba(0,0,0,.8);
+  --focus-ring:rgba(255,138,61,.6);
+}
+[data-theme="light"]{
+  /* Near-white paper canvas, hairline rules, near-black type — the Notion /
+     Apple / Linear register. Industrial character is carried by the molten
+     accent, the tabular data, and precise hairlines rather than by grey. */
+  --bg:#FFFFFF; --bg2:#F7F7F8; --surface:rgba(255,255,255,.86);
+  --surface-solid:#FFFFFF; --line:rgba(16,24,40,.11);
+  --tx:#121417; --tx2:#606774; --glassblur:20px;
+  --shadow:0 1px 2px rgba(16,24,40,.05), 0 8px 24px rgba(16,24,40,.07);
+  --elev-1:#F5F6F8; --elev-2:#FFFFFF; --elev-3:#FFFFFF;
+  --line-soft:rgba(16,24,40,.055);
+  --sh-1:0 1px 2px rgba(16,24,40,.06);
+  --sh-2:0 2px 8px rgba(16,24,40,.07), 0 1px 2px rgba(16,24,40,.05);
+  --sh-3:0 12px 32px rgba(16,24,40,.12), 0 2px 6px rgba(16,24,40,.06);
+  --focus-ring:rgba(255,138,61,.65);
+}
+
+*{box-sizing:border-box}
+/* BUG FIX — was `height:100%`, which pinned <body> to the viewport while its
+   content grew past it. The page then scrolled on BODY rather than on the
+   document, so `document.scrollingElement.scrollTop`, browser scroll
+   restoration and anchor jumps all silently did nothing. `min-height` gives
+   the same full-bleed background with normal document scrolling; .app already
+   carries `min-height:100vh` for the full-height shell. */
+html,body{min-height:100%}
+body{
+  margin:0; font-family:var(--font); color:var(--tx);
+  background:
+    radial-gradient(1100px 560px at 82% -12%, rgba(124,77,255,.16), transparent 60%),
+    radial-gradient(900px 520px at -10% 112%, rgba(0,212,255,.10), transparent 58%),
+    radial-gradient(720px 400px at 55% 120%, var(--accent-soft), transparent 60%),
+    linear-gradient(165deg, #0D1226 0%, #0B1020 45%, #0A0E1E 100%);
+  background-attachment:fixed;
+  font-size:15px; line-height:1.45;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility;
+}
+
+/* Pure Black mode: amber accents over true black, purple ambient lighting,
+   a soft cyan under-glow — the specified night-control-room register. */
+body[data-theme="black"]{
+  background:
+    radial-gradient(1000px 540px at 80% -14%, rgba(124,77,255,.20), transparent 58%),
+    radial-gradient(880px 500px at -8% 112%, rgba(0,212,255,.12), transparent 56%),
+    radial-gradient(640px 360px at 60% 118%, rgba(255,138,61,.10), transparent 60%),
+    #000;
+}
+
+/* White mode background: a whisper of warmth over paper, not a colour wash.
+   The industrial signal comes from the amber hairline at the top edge. */
+body[data-theme="light"]{
+  /* Apple/Notion: pure paper. One amber hairline at the top edge is the
+     entire ornament — the industrial identity, reduced to a signature. */
+  background:
+    linear-gradient(180deg, rgba(255,138,61,.5), rgba(255,138,61,0) 3px),
+    linear-gradient(180deg, #FFFFFF 0%, #FAFAFB 100%);
+}
+.hidden{display:none!important}
+b{font-weight:650}
+code{font-family:var(--mono); font-size:.9em; background:var(--surface); padding:1px 5px; border-radius:5px}
+
+.glass{
+  background:var(--surface);
+  backdrop-filter:blur(var(--glassblur)) saturate(1.15);
+  -webkit-backdrop-filter:blur(var(--glassblur)) saturate(1.15);
+  border:1px solid var(--line); border-radius:var(--radius);
+  box-shadow:var(--shadow);
+}
+@supports not (backdrop-filter:blur(1px)){ .glass{background:var(--surface-solid)} }
+@media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important} }
+
+/* ─── LOGIN ─── */
+.login-wrap{min-height:100vh; display:grid; place-items:center; padding:20px}
+.login-card{width:min(430px,94vw); padding:34px 34px 26px}
+.login-brand{display:flex; gap:16px; align-items:center; margin-bottom:8px}
+.login-brand h1{margin:0; font-size:34px; letter-spacing:.5px}
+.login-brand h1 span{color:var(--accent); font-weight:800}
+.motto{margin:2px 0 0; color:var(--tx2); font-size:12.5px; letter-spacing:.4px}
+.login-plant{font-family:var(--mono); color:var(--tx2); font-size:13px; margin:14px 0 18px; min-height:18px}
+.login-err{color:var(--err); min-height:20px; margin-top:10px; font-size:13.5px}
+.login-demo{color:var(--tx2); font-size:11.5px; margin-top:16px; border-top:1px solid var(--line); padding-top:12px}
+
+.melt-dot{width:52px;height:52px;border-radius:50%;
+  background:radial-gradient(circle at 38% 34%, #FFD9A8, var(--accent) 55%, #C24E12 100%);
+  box-shadow:0 0 26px var(--accent-soft), 0 0 60px rgba(255,138,61,.25);
+  animation:melt 3.2s ease-in-out infinite}
+.melt-dot.small{width:30px;height:30px}
+@keyframes melt{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+
+/* ─── SHELL ─── */
+.app{display:flex; min-height:100vh}
+.rail{
+  width:74px; flex:0 0 74px; position:sticky; top:0; height:100vh;
+  display:flex; flex-direction:column; align-items:center; gap:4px;
+  padding:14px 0; border-right:1px solid var(--line); background:var(--bg2);
+}
+.rail-logo{margin-bottom:14px}
+.rail a{
+  width:60px; text-decoration:none; color:var(--tx2); text-align:center;
+  padding:9px 0 7px; border-radius:12px; font-size:19px; line-height:1;
+}
+.rail a span{display:block; font-size:9.5px; letter-spacing:.6px; margin-top:4px; text-transform:uppercase}
+.rail a.active{color:var(--tx); background:var(--accent-soft); box-shadow:inset 0 0 0 1px rgba(255,138,61,.35)}
+.rail a:hover{color:var(--tx)}
+.rail-spacer{flex:1}
+.rail-btn{width:44px;height:44px;border-radius:12px;border:1px solid var(--line);
+  background:transparent;color:var(--tx2);font-size:17px;cursor:pointer;margin:3px 0}
+.rail-btn:hover{color:var(--tx);border-color:var(--tx2)}
+
+.main{flex:1; min-width:0; display:flex; flex-direction:column}
+main#view{padding:18px 22px 60px; max-width:1500px; width:100%; margin:0 auto}
+
+/* ─── STATUS BAR (the five-second answer, always visible) ─── */
+.statusbar{
+  position:sticky; top:10px; z-index:40; margin:10px 18px 0;
+  display:flex; align-items:center; gap:18px; padding:10px 18px;
+}
+.sb-plant{display:flex; gap:22px}
+.sb-plant label{display:block; font-size:9.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--tx2)}
+.sb-plant b{font-family:var(--mono); font-size:17px; font-variant-numeric:tabular-nums}
+.sb-shift b{color:var(--accent)}
+.sb-title{flex:1; text-align:center; font-size:13px; letter-spacing:2.2px; text-transform:uppercase; color:var(--tx2)}
+.sb-user{display:flex; align-items:center; gap:14px}
+.sb-who{text-align:right; line-height:1.2}
+.sb-who span{display:block; font-size:11px; color:var(--tx2)}
+.bell{position:relative; background:none; border:none; font-size:19px; cursor:pointer; color:var(--tx)}
+.bell i{position:absolute; top:-6px; right:-9px; background:var(--err); color:#fff;
+  font-style:normal; font-size:10px; font-weight:700; border-radius:9px; padding:1px 5px}
+
+.training-banner{margin:10px 18px 0; padding:8px 16px; border-radius:10px;
+  background:repeating-linear-gradient(45deg,rgba(245,197,66,.18),rgba(245,197,66,.18) 12px,rgba(245,197,66,.05) 12px,rgba(245,197,66,.05) 24px);
+  border:1px solid rgba(245,197,66,.5); color:var(--tx); font-size:13px; font-weight:600}
+
+/* ─── GENERIC UI ─── */
+h2.pg{margin:16px 2px 12px; font-size:21px; letter-spacing:.3px}
+h2.pg small{color:var(--tx2); font-weight:400; font-size:13px; margin-left:10px}
+.grid{display:grid; gap:14px}
+.cols-2{grid-template-columns:1fr 1fr}
+.cols-3{grid-template-columns:repeat(3,1fr)}
+.cols-4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:1100px){.cols-4{grid-template-columns:repeat(2,1fr)}.cols-3{grid-template-columns:1fr 1fr}}
+@media(max-width:760px){.cols-2,.cols-3,.cols-4{grid-template-columns:1fr}
+  .rail a span{display:none}.rail{width:56px;flex-basis:56px}}
+
+.card{padding:16px 18px}
+.card h3{margin:0 0 10px; font-size:12px; letter-spacing:1.6px; text-transform:uppercase; color:var(--tx2)}
+.kpi{padding:14px 18px}
+.kpi b{display:block; font-size:30px; font-family:var(--mono); font-variant-numeric:tabular-nums; line-height:1.1}
+.kpi span{font-size:11px; letter-spacing:1.1px; text-transform:uppercase; color:var(--tx2)}
+.kpi.hot b{color:var(--accent)}
+
+.btn{
+  font:inherit; font-weight:600; font-size:14px; cursor:pointer;
+  padding:9px 16px; border-radius:10px; border:1px solid var(--line);
+  background:var(--surface); color:var(--tx);
+}
+.btn:hover{border-color:var(--tx2)}
+.btn.primary{background:var(--accent); border-color:transparent; color:#1A0E03}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.danger{background:transparent;border-color:var(--err);color:var(--err)}
+.btn.small{padding:5px 11px; font-size:12.5px}
+.btn.wide{width:100%}
+.btn:disabled{opacity:.45; cursor:not-allowed}
+
+.fld{display:block; margin:10px 0}
+.fld span{display:block; font-size:11px; letter-spacing:.9px; text-transform:uppercase; color:var(--tx2); margin-bottom:5px}
+.fld input,.fld select,.fld textarea{
+  width:100%; font:inherit; color:var(--tx); padding:9px 12px;
+  background:var(--surface-solid); border:1px solid var(--line); border-radius:9px;
+}
+.fld input:focus,.fld select:focus,.fld textarea:focus{outline:2px solid var(--accent); outline-offset:1px; border-color:transparent}
+.fld .unit{color:var(--tx2); font-size:11px; margin-left:6px; text-transform:none; letter-spacing:0}
+.fld input[type=number]{font-family:var(--mono); font-variant-numeric:tabular-nums}
+.fld.auto input{border-style:dashed; color:var(--accent); font-weight:700}
+.fld textarea{min-height:64px; resize:vertical}
+
+table.t{width:100%; border-collapse:collapse; font-size:13.5px}
+table.t th{font-size:10.5px; letter-spacing:1px; text-transform:uppercase; color:var(--tx2);
+  text-align:left; padding:7px 9px; border-bottom:1px solid var(--line)}
+table.t td{padding:7px 9px; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums}
+table.t tr:hover td{background:var(--surface)}
+table.t td.mono, .mono{font-family:var(--mono)}
+
+.tag{display:inline-block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
+  text-transform:uppercase; padding:2px 9px; border-radius:99px; border:1px solid var(--line)}
+.tag.done,.tag.locked,.tag.approved,.tag.accepted{color:var(--ok); border-color:var(--ok); background:rgba(55,194,160,.1)}
+.tag.open,.tag.running,.tag.in_progress{color:var(--accent); border-color:var(--accent); background:var(--accent-soft)}
+.tag.pending,.tag.created{color:var(--tx2)}
+.tag.error,.tag.rejected,.tag.aborted{color:var(--err); border-color:var(--err); background:rgba(229,72,77,.09)}
+.tag.warn,.tag.hold{color:var(--warn); border-color:var(--warn); background:rgba(245,197,66,.09)}
+.tag.train{color:var(--warn); border-color:var(--warn)}
+
+/* ─── SIGNATURE: THE HEAT RAIL ─── */
+.heat-rail{padding:14px 18px; cursor:pointer}
+.heat-rail:hover{border-color:var(--accent)}
+.hr-top{display:flex; align-items:baseline; gap:12px; margin-bottom:12px; flex-wrap:wrap}
+.hr-no{font-family:var(--mono); font-size:19px; font-weight:800; letter-spacing:1px}
+.hr-meta{color:var(--tx2); font-size:12.5px}
+.hr-track{display:flex; align-items:center}
+.hr-node{width:15px;height:15px;border-radius:50%; flex:0 0 15px;
+  border:2px solid var(--line); background:var(--bg2); position:relative}
+.hr-node.done{background:radial-gradient(circle at 35% 30%, #FFD9A8, var(--accent));
+  border-color:var(--accent); box-shadow:0 0 9px var(--accent-soft)}
+.hr-node.running{border-color:var(--accent); background:var(--accent-soft); animation:pulse 1.4s ease-in-out infinite}
+.hr-node.open{border-color:var(--accent)}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 var(--accent-soft)}50%{box-shadow:0 0 0 7px transparent}}
+.hr-seg{height:3px; flex:1; background:var(--line); min-width:14px}
+.hr-seg.done{background:linear-gradient(90deg, var(--accent), #C24E12)}
+.hr-labels{display:flex; margin-top:6px}
+.hr-labels span{flex:1; font-size:9.5px; letter-spacing:.4px; text-transform:uppercase;
+  color:var(--tx2); text-align:center}
+.hr-labels span:first-child{text-align:left}
+.hr-labels span:last-child{text-align:right}
+.hr-labels span.on{color:var(--accent); font-weight:700}
+
+/* ─── TILES (module workspace) ─── */
+.tiles{display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:12px}
+.tile{padding:16px; cursor:pointer; position:relative; transition:transform .12s ease}
+.tile:hover{transform:translateY(-2px); border-color:var(--accent)}
+.tile .ti{font-size:24px}
+.tile b{display:block; margin-top:8px; font-size:14.5px}
+.tile .st{position:absolute; top:12px; right:12px; width:11px; height:11px; border-radius:50%}
+.tile .st.done{background:var(--ok); box-shadow:0 0 8px rgba(55,194,160,.6)}
+.tile .st.part{background:var(--warn)}
+.tile .st.todo{background:var(--line)}
+.tile .st.err{background:var(--err)}
+.tile small{color:var(--tx2); font-size:11.5px}
+
+/* stage tabs across heat workspace */
+.stage-tabs{display:flex; gap:6px; flex-wrap:wrap; margin:12px 0}
+.stage-tab{padding:7px 13px; border-radius:99px; border:1px solid var(--line);
+  background:var(--surface); cursor:pointer; font-size:13px; font-weight:600; color:var(--tx2)}
+.stage-tab.active{color:#1A0E03; background:var(--accent); border-color:transparent}
+.stage-tab.done{color:var(--ok); border-color:var(--ok)}
+.stage-tab.gated{opacity:.45; cursor:not-allowed}
+
+/* ═══ MODAL — the one authoritative definition ═══════════════════════════════
+   THE LAW: a dialog is a scrollable content region plus a permanently visible
+   action footer. Buttons can never be pushed off screen, on any device, at any
+   zoom, in any orientation.
+
+   The architecture that guarantees it (and the ONLY one that does):
+     .modal        flex column, overflow:hidden   ← never scrolls itself
+     .modal-scroll flex:1 1 auto, min-height:0    ← the only scrolling region
+     .modal-foot   flex:0 0 auto                  ← cannot shrink or scroll away
+   `min-height:0` is load-bearing: without it a flex child refuses to shrink
+   below its content and the footer gets pushed out of the viewport.
+
+   This was previously spread over six layers that contradicted each other —
+   `overflow:auto` here vs `hidden` later, `position:sticky; bottom:-22px` here
+   vs `position:static` later. Consolidated so there is one answer. */
+.modal-back{
+  position:fixed; inset:0; background:var(--scrim); z-index:90;
+  display:flex; align-items:center; justify-content:center;
+  padding:var(--sp-4); animation:fade .15s ease;
+  overflow-y:auto;                 /* last resort if a dialog exceeds the screen */
+  overscroll-behavior:contain;
+}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.modal{
+  /* The footer bleeds to the dialog edge with a negative margin, so its inset
+     MUST track the dialog padding. Deriving both from one variable is what
+     stops them desyncing — at ≤720px the padding dropped to 16px while the
+     footer margin stayed at -22px, overhanging the dialog by 6px a side. */
+  --modal-pad:var(--sp-5);
+  width:min(880px,96vw);
+  max-height:min(92vh, 900px);
+  display:flex; flex-direction:column; overflow:hidden;
+  padding:var(--modal-pad);
+  margin:auto;
+  animation:up .18s ease;
+}
+@keyframes up{from{transform:translateY(14px);opacity:0}to{transform:none;opacity:1}}
+.modal h3{margin:0 0 var(--sp-1); font-size:var(--fs-xl); text-transform:none;
+  letter-spacing:-.015em; line-height:var(--lh-tight); color:var(--tx)}
+.modal .sub{color:var(--tx2); font-size:var(--fs-small);
+  line-height:var(--lh-base); margin-bottom:var(--sp-3)}
+.modal-scroll{
+  flex:1 1 auto; min-height:0;
+  overflow-y:auto; overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  /* Breathing room so the last field never sits flush against the footer. */
+  padding-bottom:var(--sp-2);
+}
+.modal-foot{
+  flex:0 0 auto;
+  display:flex; gap:var(--sp-2); justify-content:flex-end; align-items:center;
+  flex-wrap:wrap;
+  margin:var(--sp-4) calc(var(--modal-pad) * -1) calc(var(--modal-pad) * -1);
+  padding:var(--sp-3) var(--modal-pad);
+  background:var(--surface-solid);
+  border-top:var(--seam) solid var(--line);
+  /* Home-indicator clearance when a dialog runs to the bottom of a phone. */
+  padding-bottom:calc(var(--sp-3) + env(safe-area-inset-bottom, 0px));
+}
+/* A dialog with many actions must wrap them, never clip them. On a phone the
+   buttons go full-width and reverse, so the primary action sits under the
+   thumb rather than at the far edge. */
+@media (max-width:560px){
+  .modal-foot{flex-direction:column-reverse; align-items:stretch}
+  .modal-foot .btn{width:100%}
+}
+.x{background:none;border:none;color:var(--tx2);font-size:16px;cursor:pointer}
+.fgrid{display:grid; grid-template-columns:1fr 1fr; gap:0 18px}
+@media(max-width:640px){.fgrid{grid-template-columns:1fr}}
+
+/* chemistry grid */
+.chem-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(92px,1fr)); gap:8px}
+.chem-cell input{text-align:center}
+.chem-cell .spec{font-size:9.5px; color:var(--tx2); text-align:center; margin-top:2px; font-family:var(--mono)}
+.chem-cell.out input{border-color:var(--err); color:var(--err)}
+.chem-cell.in input{border-color:var(--ok)}
+
+/* findings */
+.finding{display:flex; gap:9px; padding:8px 11px; border-radius:9px; margin:6px 0; font-size:13.5px}
+.finding.error{background:rgba(229,72,77,.10); border:1px solid rgba(229,72,77,.4)}
+.finding.warning{background:rgba(245,197,66,.09); border:1px solid rgba(245,197,66,.35)}
+.finding.info{background:rgba(91,141,190,.10); border:1px solid rgba(91,141,190,.35)}
+.finding b{font-size:10px; letter-spacing:1px; text-transform:uppercase; padding-top:2px}
+.finding.error b{color:var(--err)}.finding.warning b{color:var(--warn)}.finding.info b{color:var(--info)}
+
+/* timeline */
+.tline{position:relative; margin:8px 0 0 10px; padding-left:22px; border-left:2px solid var(--line)}
+.tl-ev{position:relative; padding:7px 0 7px 4px}
+.tl-ev::before{content:""; position:absolute; left:-28.5px; top:13px; width:11px; height:11px;
+  border-radius:50%; background:var(--bg2); border:2px solid var(--tx2)}
+.tl-ev.k-locked::before,.tl-ev.k-approval::before{border-color:var(--ok); background:var(--ok)}
+.tl-ev.k-stage_submitted::before{border-color:var(--accent); background:var(--accent)}
+.tl-ev.k-validation::before{border-color:var(--warn)}
+.tl-ev.k-aborted::before,.tl-ev.k-unlocked::before{border-color:var(--err); background:var(--err)}
+.tl-ev time{font-family:var(--mono); font-size:11.5px; color:var(--tx2); margin-right:10px}
+.tl-ev .who{color:var(--info); font-size:12px}
+
+/* (the legacy .gantt-* system was superseded by .sg-* and is removed) */
+
+/* drawer & toast */
+.drawer{position:fixed; top:0; right:0; height:100vh; width:min(400px,94vw); z-index:80;
+  border-radius:0; padding:16px; overflow:auto; animation:slidein .18s ease}
+@keyframes slidein{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:1}}
+.drawer-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px}
+.notif{padding:10px 12px; border:1px solid var(--line); border-radius:10px; margin:8px 0}
+.notif.unread{border-color:var(--accent)}
+.notif .n-meta{font-size:11px; color:var(--tx2); font-family:var(--mono)}
+.notif.critical{border-color:var(--err)}
+.toast{position:fixed; left:50%; bottom:26px; transform:translateX(-50%);
+  padding:11px 20px; border-radius:12px; z-index:120; font-weight:600; animation:up .2s ease}
+.toast.ok{background:var(--ok); color:#06251C}
+.toast.err{background:var(--err); color:#fff}
+
+/* misc */
+.row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+.spread{justify-content:space-between}
+.muted{color:var(--tx2)}
+.small{font-size:12.5px}
+.svgchart{width:100%; height:auto; display:block}
+.empty{color:var(--tx2); text-align:center; padding:30px 10px; font-size:13.5px}
+.sec{margin-top:18px}
+a.link{color:var(--accent); text-decoration:none; cursor:pointer}
+.autosave{font-size:11px; color:var(--tx2); font-family:var(--mono)}
+.autosave.saved{color:var(--ok)}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+/* ================================================================
+   SECTION-17 — ULTRA PREMIUM WOW LAYER
+   Next-generation industrial command center visuals.
+   All effects degrade gracefully (reduced-motion, no backdrop-filter).
+   ================================================================ */
+
+/* ── (retired) living aurora background ──────────────────────────────────
+   36 lines removed: two 52vw conic gradients under blur(110px) animating
+   forever, plus per-theme variants and both @keyframes. Every rule was
+   already unreachable behind `body::before,body::after{display:none}`
+   from Phase 2, and it was pure GPU cost on a plant workstation. */
+
+/* (gradient tokens moved into the single :root block at the top of the file) */
+
+/* ── per-module personality (accent recolors by view) ── */
+body[data-view="entry"]{--accent:#2FB8FF;--accent-soft:rgba(47,184,255,.16)}
+body[data-view="heats"]{--accent:#7FB6E8;--accent-soft:rgba(127,182,232,.16)}
+body[data-view="reports"]{--accent:#FFC53D;--accent-soft:rgba(255,197,61,.16)}
+body[data-view="search"]{--accent:#00D4FF;--accent-soft:rgba(0,212,255,.15)}
+body[data-view="calculator"]{--accent:#9E6BFF;--accent-soft:rgba(158,107,255,.17)}
+body[data-view="knowledge"]{--accent:#C77DFF;--accent-soft:rgba(199,125,255,.16)}
+body[data-view="admin"]{--accent:#FF5C7A;--accent-soft:rgba(255,92,122,.15)}
+body[data-view="entry"] .btn.primary,body[data-view="search"] .btn.primary{color:#03202C}
+body[data-view="reports"] .btn.primary{color:#2A1A00}
+body[data-view="calculator"] .btn.primary,body[data-view="knowledge"] .btn.primary,
+body[data-view="admin"] .btn.primary{color:#fff}
+
+h2.pg{
+  background:var(--grad-molten); -webkit-background-clip:text; background-clip:text;
+  -webkit-text-fill-color:transparent; width:fit-content;
+}
+body[data-view="entry"] h2.pg{background:var(--grad-prod);-webkit-background-clip:text;background-clip:text}
+body[data-view="reports"] h2.pg{background:var(--grad-gold);-webkit-background-clip:text;background-clip:text}
+body[data-view="search"] h2.pg{background:var(--grad-steel);-webkit-background-clip:text;background-clip:text}
+body[data-view="calculator"] h2.pg{background:var(--grad-ai);-webkit-background-clip:text;background-clip:text}
+body[data-view="knowledge"] h2.pg{background:var(--grad-violet);-webkit-background-clip:text;background-clip:text}
+body[data-view="admin"] h2.pg{background:var(--grad-ruby);-webkit-background-clip:text;background-clip:text}
+h2.pg small{-webkit-text-fill-color:var(--tx2)}
+
+/* ── premium card & button physics ── */
+.glass{transition:transform .18s ease, box-shadow .25s ease, border-color .25s ease}
+.card.glass:hover,.kpi.glass:hover{
+  transform:translateY(-2px);
+  box-shadow:0 14px 40px rgba(0,0,0,.35), 0 0 0 1px var(--accent-soft), 0 0 34px var(--accent-soft);
+}
+.glass{position:relative; overflow:hidden}
+.glass::before{
+  content:""; position:absolute; inset:0 0 auto 0; height:1px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);
+  pointer-events:none;
+}
+.btn.primary{
+  background:var(--grad-molten); position:relative; overflow:hidden;
+  box-shadow:0 4px 18px rgba(255,110,60,.35);
+}
+.btn.primary::after{
+  content:""; position:absolute; top:0; left:-70%; width:45%; height:100%;
+  background:linear-gradient(105deg,transparent,rgba(255,255,255,.55),transparent);
+  transform:skewX(-18deg); transition:left .5s ease;
+}
+.btn.primary:hover::after{left:130%}
+/* KPI VALUES — BUG FIX (was: gradient-clipped text).
+   `-webkit-text-fill-color:transparent` here silently defeated EVERY later
+   `color:` declaration on these elements, including the whole light-mode
+   4.5:1 contrast remediation — the fix computed correctly but never
+   rendered, because text-fill-color outranks color on WebKit/Blink.
+   A production reading must never be a gradient: it is data, and it has to
+   survive a contrast check. Flat, token-driven, tabular. */
+.kpi b{
+  background:none; -webkit-background-clip:border-box; background-clip:border-box;
+  -webkit-text-fill-color:currentColor; color:var(--tx);
+}
+.kpi.hot b{
+  background:none; -webkit-background-clip:border-box; background-clip:border-box;
+  -webkit-text-fill-color:currentColor; color:var(--accent-tx);
+  filter:none;
+}
+main#view > *{animation:viewin .38s cubic-bezier(.2,.8,.25,1) both}
+@keyframes viewin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.tile:hover{box-shadow:0 10px 30px rgba(0,0,0,.35), 0 0 26px var(--accent-soft)}
+/* Stage tabs follow the same law as the rail: SELECTION is not live metal.
+   A raised face plus a lit accent edge, matching .rail a.active — previously
+   this alone kept a full molten gradient and a 20px glow, which is why the
+   two primary navigation surfaces looked like they came from different apps. */
+.stage-tab.active{
+  background:var(--elev-3); color:var(--tx); border-color:var(--accent);
+  box-shadow:inset 0 -2px 0 var(--accent);
+}
+
+/* ── animated login ── */
+.login-card{position:relative}
+.login-card::after{
+  content:""; position:absolute; inset:-2px; border-radius:inherit; padding:2px; z-index:-1;
+  background:conic-gradient(from var(--ang,0deg), #FF8A3D, #FF3D6E, #7C4DFF, #00D4FF, #22E3A2, #FF8A3D);
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor; mask-composite:exclude;
+  animation:ringspin 7s linear infinite; opacity:.8;
+}
+@property --ang{syntax:'<angle>'; initial-value:0deg; inherits:false}
+@keyframes ringspin{to{--ang:360deg}}
+.login-brand h1 span{background:var(--grad-molten);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+
+/* ════════ SMART SWITCHABLE INDUSTRIAL GANTT CHART ════════ */
+.sg-hero{padding:18px 20px 14px; margin-top:14px; position:relative}
+.sg-hero::after{
+  content:""; position:absolute; inset:auto 0 0 0; height:2px;
+  background:var(--grad-molten); opacity:.7; border-radius:0 0 var(--radius) var(--radius);
+}
+.sg-head{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:12px}
+.sg-title{font-size:15px; font-weight:800; letter-spacing:2.4px; text-transform:uppercase;
+  background:var(--grad-molten);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.sg-live{display:inline-flex; align-items:center; gap:6px; font-size:11px; letter-spacing:1.4px;
+  text-transform:uppercase; color:var(--ok); font-weight:800}
+.sg-live::before{content:""; width:9px; height:9px; border-radius:50%; background:var(--ok);
+  box-shadow:0 0 10px var(--ok); animation:pulse 1.6s ease-in-out infinite}
+.sg-switch{display:flex; border:1px solid var(--line); border-radius:99px; overflow:hidden; background:var(--surface)}
+.sg-switch button{font:inherit; font-size:12.5px; font-weight:700; padding:7px 15px; border:none;
+  background:transparent; color:var(--tx2); cursor:pointer; letter-spacing:.4px}
+.sg-switch button.on{background:var(--grad-molten); color:#201003}
+.sg-sum{margin-left:auto; display:flex; gap:8px; flex-wrap:wrap}
+
+.sg-body{overflow-x:auto}
+.sg-grid{min-width:760px; position:relative}
+.sg-axis{position:relative; height:22px; margin-left:158px}
+.sg-axis span{position:absolute; transform:translateX(-50%); font-family:var(--mono);
+  font-size:10px; color:var(--tx2)}
+.sg-row{display:flex; align-items:stretch; margin:5px 0}
+.sg-lab{width:150px; flex:0 0 150px; padding:5px 8px 5px 2px; line-height:1.25}
+.sg-lab b{font-family:var(--mono); font-size:13.5px; letter-spacing:.6px; display:block}
+.sg-lab b a{color:inherit; text-decoration:none}
+.sg-lab b a:hover{color:var(--accent)}
+.sg-lab small{color:var(--tx2); font-size:10px; display:block; text-transform:uppercase; letter-spacing:.5px}
+.sg-track{flex:1; position:relative; min-height:38px; border-radius:9px;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(100%/12 - 1px), var(--line) calc(100%/12 - 1px) calc(100%/12)),
+    var(--surface);
+  border:1px solid var(--line); overflow:hidden}
+.sg-bar{position:absolute; top:6px; bottom:6px; border-radius:7px; display:flex; align-items:center;
+  padding:0 8px; font-size:10px; font-weight:800; letter-spacing:.4px; color:#101418;
+  white-space:nowrap; overflow:hidden; cursor:pointer;
+  box-shadow:0 2px 10px rgba(0,0,0,.35);
+  animation:barin .5s cubic-bezier(.2,.8,.25,1) both;
+  transition:filter .15s ease, box-shadow .2s ease, transform .15s ease}
+@keyframes barin{from{transform:scaleX(.2); transform-origin:left; opacity:0}to{transform:none; opacity:1}}
+.sg-bar:hover{filter:brightness(1.15); z-index:5; box-shadow:0 4px 18px rgba(0,0,0,.45), 0 0 22px var(--accent-soft); transform:translateY(-1px)}
+.sg-bar.live{background-size:200% 100%!important; animation:barin .5s both, flow 2.6s linear infinite}
+@keyframes flow{from{background-position:0 0}to{background-position:200% 0}}
+.sg-bar.live::after{content:""; position:absolute; inset:0; border-radius:inherit;
+  box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.55); animation:pulse 1.6s ease-in-out infinite}
+/* stage personalities */
+/* Stage colours come from the tokens so the legend cannot drift from the bars. */
+.sg-bar[data-stage="hot_metal"]{background:var(--st-hot-metal)}
+.sg-bar[data-stage="eaf"]{background:var(--st-eaf)}
+.sg-bar[data-stage="zpf"]{background:var(--st-zpf)}
+.sg-bar[data-stage="lrf"]{background:var(--st-lrf); color:#fff}
+.sg-bar[data-stage="vd"]{background:var(--st-vd); color:#fff}
+.sg-bar[data-stage="caster"]{background:var(--st-caster)}
+.sg-bar[data-stage="quality"]{background:var(--st-quality)}
+.sg-bar[data-stage="review"]{background:var(--st-review)}
+/* Legend swatches read the SAME tokens — one source of truth. */
+.sg-legend i[data-sw="eaf"]{background:var(--st-eaf)}
+.sg-legend i[data-sw="zpf"]{background:var(--st-zpf)}
+.sg-legend i[data-sw="lrf"]{background:var(--st-lrf)}
+.sg-legend i[data-sw="vd"]{background:var(--st-vd)}
+.sg-legend i[data-sw="caster"]{background:var(--st-caster)}
+.sg-legend i[data-sw="quality"]{background:var(--st-quality)}
+.sg-legend i[data-sw="delay"]{background:var(--st-delay)}
+.sg-legend i[data-sw="shutdown"]{background:var(--st-shutdown)}
+.sg-legend i[data-sw="approval"]{background:var(--ok)}
+.sg-legend i[data-sw="route"]{background:var(--st-event-route)}
+.sg-legend i[data-sw="validation"]{background:var(--warn)}
+/* The three event markers are diamonds, not bars. */
+.sg-legend i[data-sw="approval"],
+.sg-legend i[data-sw="route"],
+.sg-legend i[data-sw="validation"]{width:9px; border-radius:2px; transform:rotate(45deg)}
+.sg-delay{position:absolute; top:2px; bottom:2px; border-radius:5px; z-index:4; cursor:help;
+  background:repeating-linear-gradient(135deg, rgba(229,72,77,.75) 0 7px, rgba(229,72,77,.35) 7px 14px);
+  box-shadow:0 0 14px rgba(229,72,77,.5); border:1px solid rgba(229,72,77,.8)}
+.sg-delay.shutdown{background:repeating-linear-gradient(135deg, rgba(180,10,40,.92) 0 7px, rgba(60,0,10,.85) 7px 14px);
+  box-shadow:0 0 20px rgba(229,20,60,.75); animation:pulse 1.4s ease-in-out infinite}
+.sg-ev{position:absolute; top:50%; width:11px; height:11px; transform:translate(-50%,-50%) rotate(45deg);
+  z-index:6; cursor:help; border:1.5px solid rgba(255,255,255,.65); border-radius:2.5px}
+.sg-ev.k-approval,.sg-ev.k-locked{background:var(--ok)}
+/* .sg-ev.k-route_selected is redefined as a switch marker further down. */
+.sg-ev.k-validation{background:var(--warn)}
+.sg-ev.k-aborted,.sg-ev.k-unlocked{background:var(--err)}
+.sg-now{position:absolute; top:0; bottom:0; width:2px; z-index:8; pointer-events:none;
+  background:linear-gradient(180deg,#FF3D6E,#FF8A3D);
+  box-shadow:0 0 12px #FF6E4D, 0 0 26px rgba(255,110,77,.6)}
+.sg-now::before{content:"NOW"; position:absolute; top:-1px; left:5px; font-size:8.5px; font-weight:800;
+  letter-spacing:1.5px; color:#FF7A5C; text-shadow:0 0 8px rgba(255,110,77,.8)}
+.sg-legend{display:flex; gap:12px; flex-wrap:wrap; margin-top:10px; font-size:10.5px; color:var(--tx2);
+  letter-spacing:.4px; text-transform:uppercase}
+.sg-legend i{display:inline-block; width:14px; height:9px; border-radius:3px; margin-right:5px; vertical-align:-1px}
+.sg-tip{position:fixed; z-index:200; max-width:320px; padding:10px 13px; font-size:12.5px;
+  pointer-events:none; border-radius:11px}
+.sg-tip b{display:block; font-family:var(--mono)}
+.sg-empty{padding:26px; text-align:center; color:var(--tx2)}
+
+/* ═══ Constitution S.4–S.6 additions (add-only layer) ═══ */
+body[data-view="ai"]{--accent:#9E6BFF;--accent-soft:rgba(158,107,255,.17)}
+body[data-view="ai"] h2.pg{background:var(--grad-ai);-webkit-background-clip:text;background-clip:text}
+body[data-view="ai"] .btn.primary{background:var(--grad-ai);color:#fff;box-shadow:0 4px 18px rgba(124,77,255,.4)}
+
+.sg-range{display:flex; gap:6px; flex-wrap:wrap; align-items:center}
+.sg-range select,.sg-range input{font:inherit;font-size:12px;padding:6px 9px;border-radius:9px;
+  border:1px solid var(--line);background:var(--surface-solid);color:var(--tx)}
+.sg-zoom{display:flex;border:1px solid var(--line);border-radius:99px;overflow:hidden;background:var(--surface)}
+.sg-zoom button{font:inherit;font-weight:800;padding:5px 12px;border:none;background:transparent;color:var(--tx2);cursor:pointer}
+.sg-zoom button:hover{color:var(--tx)}
+.sg-chips{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0 2px}
+.sg-chip{font-size:10px;font-weight:800;letter-spacing:.6px;padding:3px 10px;border-radius:99px;
+  border:1px solid var(--line);background:var(--surface);color:var(--tx2);cursor:pointer;text-transform:uppercase}
+.sg-chip.on{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.sg-body.grab{cursor:grab}.sg-body.grabbing{cursor:grabbing;user-select:none}
+
+/* Machine Status Board (Digital Twin, S.5) */
+.mb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:12px}
+.mb-card{padding:13px 15px;position:relative}
+.mb-card b.code{font-family:var(--mono);font-size:16px;letter-spacing:.8px}
+.mb-state{position:absolute;top:12px;right:12px}
+.mb-line{display:flex;justify-content:space-between;font-size:12px;margin-top:5px}
+.mb-line span{color:var(--tx2)}
+.mb-line b{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.mb-util{height:5px;border-radius:4px;background:var(--line);margin-top:9px;overflow:hidden}
+.mb-util i{display:block;height:100%;background:var(--grad-prod);border-radius:4px;box-shadow:0 0 10px rgba(34,227,162,.5)}
+.tag.RUNNING{color:var(--ok);border-color:var(--ok);background:rgba(55,194,160,.1);animation:pulse 1.8s infinite}
+.tag.READY{color:#00D4FF;border-color:#00D4FF;background:rgba(0,212,255,.09)}
+.tag.IDLE{color:var(--tx2)}
+.tag.DELAYED{color:var(--warn);border-color:var(--warn);background:rgba(245,197,66,.1);animation:pulse 1.6s infinite}
+.tag.MAINTENANCE{color:#FF9E3D;border-color:#FF9E3D;background:rgba(255,158,61,.1)}
+.tag.OFFLINE{color:var(--err);border-color:var(--err);background:rgba(229,72,77,.1)}
+
+/* AI Production Engineer */
+.ai-card{padding:13px 16px;border-left:3px solid var(--info)}
+.ai-card.high{border-left-color:var(--warn)}
+.ai-card.critical{border-left-color:var(--err);animation:pulse 2s infinite}
+.ai-card .ai-k{font-size:9.5px;letter-spacing:1.4px;text-transform:uppercase;font-weight:800;
+  background:var(--grad-ai);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.ai-ans{white-space:pre-wrap;line-height:1.6}
+.ai-chip{cursor:pointer}
+.ai-orb{width:38px;height:38px;border-radius:50%;flex:0 0 38px;
+  background:conic-gradient(from 0deg,#7C4DFF,#00D4FF,#B44DFF,#7C4DFF);
+  animation:ringspin 5s linear infinite;filter:blur(.4px);
+  box-shadow:0 0 22px rgba(124,77,255,.55)}
+
+/* ════════════════════════════════════════════════════════════════
+   MOBILE SUPPORT DIRECTIVE — desktop · tablet · Android · iOS · touch.
+   Same premium experience, zero design degradation. Add-only layer.
+   ════════════════════════════════════════════════════════════════ */
+
+/* sticky Gantt anatomy (all devices): headers + heat numbers stay pinned */
+.sg-axis{position:sticky; top:0; z-index:9; background:transparent}
+.sg-row{position:relative}
+.sg-lab{position:sticky; left:0; z-index:7;
+  background:linear-gradient(90deg, var(--bg) 78%, transparent);
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px)}
+.sg-body{-webkit-overflow-scrolling:touch; scroll-behavior:smooth; touch-action:pan-x pan-y}
+
+/* touch ergonomics everywhere */
+@media (pointer:coarse){
+  .btn{min-height:42px}
+  .btn.small{min-height:36px}
+  .stage-tab{min-height:40px}
+  .rail a{min-height:46px}
+  .sg-switch button,.sg-zoom button{padding:9px 15px}
+  .tile{min-height:96px}
+  input,select,textarea{font-size:16px}   /* prevents iOS focus zoom */
+}
+
+/* ── tablet ≤ 980px ── */
+@media (max-width:980px){
+  .grid.cols-4{grid-template-columns:repeat(2,1fr)}
+  .grid.cols-3{grid-template-columns:repeat(2,1fr)}
+  .fgrid{grid-template-columns:repeat(2,1fr)}
+  .card.glass{overflow-x:auto}
+  .modal{width:min(94vw,860px)}
+}
+
+/* ── phones ≤ 720px: rail becomes a bottom command bar ── */
+@media (max-width:720px){
+  .app{flex-direction:column}
+  .rail{
+    position:fixed; left:0; right:0; bottom:0; top:auto; z-index:60;
+    flex-direction:row; width:auto; height:60px; padding:4px 6px;
+    overflow-x:auto; overflow-y:hidden; gap:2px;
+    border-right:none; border-top:1px solid var(--line);
+    background:var(--surface-solid);
+    backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+    box-shadow:0 -8px 30px rgba(0,0,0,.35);
+  }
+  .rail-logo{display:none}
+  .rail a{flex:0 0 auto; width:56px; height:52px; margin:0}
+  .rail-spacer{display:none}
+  .rail-btn{flex:0 0 auto; width:48px; height:48px; align-self:center}
+  /* BUG FIX — this was `main{…}` (specificity 0-0-1) and therefore LOST to
+     `main#view{padding:18px 22px 60px}` (1-0-1) at the top of the file. The
+     result: on every phone the bottom-nav clearance and the iOS safe-area
+     inset were never applied, so the last row of content sat underneath the
+     fixed 60px command bar and the home indicator. Matching the ID
+     specificity is what makes the rule take effect at all. */
+  main#view{padding:0 var(--sp-3) calc(76px + env(safe-area-inset-bottom,0px))}
+  .statusbar{flex-wrap:wrap; gap:6px 10px; padding:8px 12px}
+  #sb-title{width:100%; order:-1}
+  .grid.cols-4,.grid.cols-3,.grid.cols-2{grid-template-columns:1fr 1fr}
+  .grid.cols-2{grid-template-columns:1fr}
+  .fgrid{grid-template-columns:1fr}
+  .kpi b{font-size:22px}
+  .mb-grid{grid-template-columns:repeat(auto-fill,minmax(165px,1fr))}
+  .sg-head{gap:8px}
+  .sg-sum{margin-left:0; width:100%}
+  .sg-lab{width:104px; flex:0 0 104px}
+  .sg-lab b{font-size:12px}
+  .sg-grid{min-width:640px}
+  .stage-tabs{overflow-x:auto; flex-wrap:nowrap; -webkit-overflow-scrolling:touch}
+  .stage-tab{flex:0 0 auto; white-space:nowrap}
+  .heat-rail .hr-meta{display:block; margin-top:3px}
+  .modal{width:96vw; max-height:88vh; --modal-pad:var(--sp-4)}
+  .drawer{width:min(94vw,380px)}
+  .tiles{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
+  .toast{max-width:92vw}
+  .login-card{width:min(94vw,400px)}
+  .t th,.t td{padding:7px 8px; font-size:12px}
+}
+
+/* ── small phones ≤ 420px ── */
+@media (max-width:420px){
+  .grid.cols-4,.grid.cols-3{grid-template-columns:1fr 1fr}
+  h2.pg{font-size:19px}
+  .sg-lab{width:88px; flex:0 0 88px}
+}
+
+/* respect reduced motion on the new layers too */
+/* ═══ THE NOTIFICATION LAW — drawer anatomy: can never break, overflow or hide ═══ */
+.drawer{display:flex; flex-direction:column}
+.drawer-head{flex:0 0 auto}
+#drawer-body{flex:1 1 auto; min-height:0; display:flex; flex-direction:column}
+.nd-tools{display:flex; gap:7px; align-items:center; flex:0 0 auto; margin-bottom:9px}
+.nd-tools input{flex:1; min-width:0; font:inherit; font-size:13px; padding:9px 12px;
+  border-radius:11px; border:1px solid var(--line); background:var(--surface-solid); color:var(--tx)}
+.nd-chips{display:flex; gap:5px; flex-wrap:wrap; flex:0 0 auto; margin-bottom:8px}
+.nd-chips .sg-chip b{color:var(--accent)}
+.nd-list{flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch; padding-right:2px}
+#nd-more{flex:0 0 auto; padding-top:8px}
+.notif{cursor:pointer; transition:border-color .15s ease, transform .12s ease}
+.notif:hover{transform:translateX(-2px)}
+
+/* ════════════════════════════════════════════════════════════════
+   THE PREMIUM THEME LAW — LOW POWER MODE
+   Low GPU, low battery, premium static background: same typography,
+   same spacing, same industrial elegance. Never "ugly mode".
+   ════════════════════════════════════════════════════════════════ */
+body[data-theme="lowpower"]{
+  --bg:#0E1319; --bg2:#141B24; --surface:rgba(23,30,40,.96); --surface-solid:#171E28;
+  --line:#2A3442; --line-soft:rgba(255,255,255,.05); --tx:#EAF0F7; --tx2:#93A2B4;
+  --elev-1:#141B24; --elev-2:#171E28; --elev-3:#1E2733;
+  --shadow:0 6px 22px rgba(0,0,0,.35);
+  --sh-1:0 1px 2px rgba(0,0,0,.3);
+  --sh-2:0 4px 14px rgba(0,0,0,.34);
+  --sh-3:0 10px 28px rgba(0,0,0,.44);
+  --focus-ring:rgba(255,138,61,.55);
+  background:linear-gradient(172deg, #131A24 0%, #0D1218 100%) fixed;  /* one gradient — minimal & fast */
+}
+body[data-theme="lowpower"]::before,
+body[data-theme="lowpower"]::after{display:none}          /* no animated aurora */
+body[data-theme="lowpower"] *,
+body[data-theme="lowpower"] *::before,
+body[data-theme="lowpower"] *::after{
+  animation-iteration-count:1 !important;                  /* entrances play once; loops stop */
+  backdrop-filter:none !important; -webkit-backdrop-filter:none !important;
+}
+body[data-theme="lowpower"] .glass{background:var(--surface); box-shadow:0 6px 22px rgba(0,0,0,.35)}
+body[data-theme="lowpower"] .sg-bar.live{background-size:100% 100% !important}
+body[data-theme="lowpower"] .sg-now{box-shadow:none}
+body[data-theme="lowpower"] .login-card::after{animation:none; opacity:.5}
+body[data-theme="lowpower"] .ai-orb{animation:none}
+body[data-theme="lowpower"] .kpi.hot b{filter:none}
+body[data-theme="lowpower"] .card.glass:hover,
+body[data-theme="lowpower"] .kpi.glass:hover{transform:none; box-shadow:0 6px 22px rgba(0,0,0,.4)}
+
+/* aurora also stops entirely under reduced-motion (battery + accessibility) */
+/* ═══ CUSTOM INDUSTRIAL THEMES (plant-brandable, zero code changes) ═══
+   Drop a `custom-theme.css` next to app.css and register it in index.html,
+   overriding the variables below under body[data-theme="dark"] (or any
+   theme). Every component reads exclusively from these tokens, so plant
+   branding can never break layout, spacing or functionality:
+     --bg  --surface  --surface-solid  --line  --tx  --tx2
+     --accent  --accent-soft  --ok  --warn  --err  --info
+     --grad-molten  --grad-prod  --grad-ai  --grad-gold  --grad-steel
+*/
+
+/* ═══ THE VALIDATION LAW — guide, never punish ═══ */
+.btn:disabled{opacity:.5; cursor:not-allowed; filter:saturate(.45); box-shadow:none; transform:none!important}
+.btn.primary:disabled::after{display:none}
+.fld.miss input,.fld.miss select,.fld.miss textarea{
+  border-color:var(--warn)!important; box-shadow:0 0 0 1px rgba(245,197,66,.3)}
+.fld.miss > span{color:var(--warn)}
+.fld.miss > span::after{content:" — required"; text-transform:none; letter-spacing:0; font-weight:600}
+.guide{padding:15px 19px; border-left:3px solid var(--warn)}
+.guide > b{font-size:12px; letter-spacing:1.6px; text-transform:uppercase; color:var(--warn)}
+.guide ul{margin:9px 0 0; padding-left:19px}
+.guide li{margin:5px 0; font-size:13px}
+.guide li b{text-transform:none; letter-spacing:0; font-size:13px}
+
+/* (Dialog anatomy is now defined once, in the MODAL block near the top of this
+   file. These layers previously re-declared .modal / .modal-scroll /
+   .modal-foot with contradictory overflow and positioning — the base said
+   `overflow:auto` and `position:sticky; bottom:-22px`, these said `hidden` and
+   `static`. Only the footer corner radius is still needed here, because the
+   footer is flush with the dialog's bottom edge.) */
+.modal-foot{border-radius:0 0 var(--radius-l) var(--radius-l)}
+
+/* ═══ Process Route decision ═══ */
+.route-opts{display:grid; gap:9px; margin:4px 0 2px}
+.route-opt{display:block; text-align:left; padding:13px 16px; border-radius:13px; cursor:pointer;
+  border:1px solid var(--line); background:var(--surface-solid); color:var(--tx);
+  transition:border-color .15s ease, transform .12s ease, box-shadow .15s ease}
+.route-opt:hover:not(:disabled){border-color:var(--accent); transform:translateX(3px);
+  box-shadow:0 6px 18px rgba(0,0,0,.28)}
+.route-opt.on{border-color:var(--accent); background:var(--accent-soft)}
+.route-opt b{display:block; font-size:14px; margin-bottom:3px}
+.route-opt span{font-size:12.5px; color:var(--tx2); line-height:1.45}
+.route-opt:disabled{opacity:.55; cursor:not-allowed}
+
+/* ═══ THE PROCESS ROUTE LAW — post-EAF decision gate ═══
+   The single moment a heat's path is decided. ZPF is NOT mandatory: choosing
+   an LRF bypasses it entirely. This earns prominence because the heat cannot
+   advance until it is answered — a blocked heat must never read as merely
+   "locked" with no way forward. Boldness is spent here and nowhere near it. */
+.route-gate{padding:var(--sp-4) var(--sp-5); border-left:3px solid var(--accent)}
+.rg-head{display:flex; gap:var(--sp-3); align-items:flex-start; margin-bottom:var(--sp-3)}
+.rg-icon{font-size:20px; line-height:1.2; color:var(--accent)}
+.rg-head b{display:block; font-size:var(--fs-lg); margin-bottom:2px}
+.rg-head small{display:block; color:var(--tx2); font-size:var(--fs-small); line-height:var(--lh-base)}
+/* Three parallel choices read as one decision — 180px keeps them on a single
+   row at the workspace width, and still reflows cleanly on a phone. */
+.rg-opts{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:var(--sp-2)}
+.rg-opt{text-align:left; padding:var(--sp-3) var(--sp-4); border-radius:var(--radius-s);
+  cursor:pointer; border:1px solid var(--line); background:var(--surface-solid); color:var(--tx);
+  transition:border-color var(--dur) var(--ease), transform var(--dur-fast) var(--ease),
+             box-shadow var(--dur) var(--ease)}
+.rg-opt:hover{border-color:var(--accent); transform:translateY(-2px); box-shadow:var(--sh-2)}
+.rg-opt:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.rg-opt b{display:block; font-size:var(--fs-base); margin-bottom:2px}
+.rg-opt span{display:block; font-size:var(--fs-small); color:var(--tx2); line-height:1.4}
+/* The dedicated header control, only while the decision is outstanding.
+   The entrance draws the eye twice, then STOPS — an endlessly repainting
+   box-shadow burns main-thread frames on a plant workstation for no added
+   information, and the banner below already carries the emphasis. */
+.route-cta{animation:route-pulse 2.2s var(--ease) 2}
+@keyframes route-pulse{
+  0%{box-shadow:0 0 0 0 var(--accent-soft)}
+  70%{box-shadow:0 0 0 9px transparent}
+  100%{box-shadow:0 0 0 0 transparent}}
+
+/* ═══ Logout Safety ═══ */
+.logout-status{border:1px solid var(--line); border-radius:12px; padding:11px 15px;
+  background:var(--surface-solid); display:grid; gap:7px; font-size:13px}
+.logout-status .row{gap:14px}
+.logout-status span{color:var(--tx2)}
+.ok-tx{color:var(--ok)}
+#logout-btn{color:var(--err)}
+#logout-btn:hover{background:rgba(255,90,90,.14); border-color:var(--err); color:var(--err)}
+
+/* ═══ Credentials & recovery ═══ */
+.cred-box{font-size:21px; letter-spacing:2px; text-align:center; padding:16px;
+  margin:12px 0 4px; border-radius:12px; border:1px dashed var(--accent);
+  background:var(--accent-soft); color:var(--tx); user-select:all}
+.cred-file{font-family:var(--mono); font-size:11.5px; line-height:1.5; white-space:pre;
+  overflow-x:auto; background:var(--surface-solid); border:1px solid var(--line);
+  border-radius:11px; padding:14px; max-height:52vh; color:var(--tx2)}
+.linkbtn{background:none; border:none; color:var(--tx2); font:inherit; font-size:12.5px;
+  cursor:pointer; padding:9px 4px 2px; width:100%; text-align:center;
+  text-decoration:underline; text-underline-offset:3px}
+.linkbtn:hover{color:var(--accent)}
+/* DEDUPED: these re-declared .tag.done / .tag.warn with DIFFERENT alphas
+   (.16 vs .10/.09) than the canonical rules, so the same status chip had two
+   possible appearances depending on which rule loaded last. They now defer to
+   the canonical set and only add the states that rule does not cover. */
+.tag.active{background:var(--ok-soft); color:var(--ok); border-color:var(--ok)}
+.tag.disabled,.tag.archived{background:var(--err-soft); color:var(--err); border-color:var(--err)}
+input[type=range]{accent-color:var(--accent); width:100%}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   PHASE 1 · FOCUS SYSTEM
+   Every interactive element gets a visible, consistent focus ring for
+   keyboard and switch operation. Pointer users never see it
+   (:focus-visible), so nothing changes for mouse or touch.
+   ═══════════════════════════════════════════════════════════════════ */
+button:focus-visible, a:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible,
+.sg-chip:focus-visible, .tile:focus-visible, .route-opt:focus-visible{
+  outline:2px solid var(--accent);
+  outline-offset:2px;
+}
+.modal-back:focus{outline:none}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PHASE 3 · COMPONENT POLISH
+   Presentational refinement only — no markup, no handlers, no logic.
+   Every value below resolves to the Phase-1 scale so the whole product
+   shares one rhythm. Appended last so it refines without editing the
+   original rules (nothing can be lost by reverting this block).
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Surfaces: premium scrollbars and selection ── */
+*{scrollbar-width:thin; scrollbar-color:var(--line) transparent}
+::-webkit-scrollbar{width:10px; height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--line); border-radius:var(--radius-pill);
+  border:2px solid transparent; background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:var(--tx2); background-clip:content-box}
+::selection{background:var(--accent-soft); color:var(--tx)}
+
+/* ── Buttons: instrument-grade feedback (hover · press · focus · disabled) ── */
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:var(--sp-2);
+  padding:var(--sp-2) var(--sp-4); line-height:1.25; white-space:nowrap;
+  font-size:var(--fs-base); border-radius:var(--radius-s);
+  transition:background var(--dur-fast) var(--ease),
+             border-color var(--dur-fast) var(--ease),
+             box-shadow var(--dur-fast) var(--ease),
+             transform var(--dur-fast) var(--ease),
+             filter var(--dur-fast) var(--ease);
+}
+.btn:not(.primary):not(.danger):hover:not(:disabled){
+  background:var(--elev-3); border-color:var(--tx2); box-shadow:var(--sh-1);
+}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn.primary{box-shadow:var(--sh-1); font-weight:650}
+.btn.primary:hover:not(:disabled){box-shadow:var(--sh-2); filter:brightness(1.07)}
+.btn.primary:active:not(:disabled){filter:brightness(.96); box-shadow:var(--sh-1)}
+.btn.danger:hover:not(:disabled){background:rgba(229,72,77,.12); box-shadow:var(--sh-1)}
+.btn.small{padding:var(--sp-1) var(--sp-3); font-size:var(--fs-small); border-radius:8px}
+.btn.wide{width:100%}
+
+/* ── Tables: precision instruments, not spreadsheets ── */
+table.t{font-size:var(--fs-body)}
+table.t th{
+  padding:var(--sp-2) var(--sp-3); font-size:var(--fs-micro);
+  letter-spacing:var(--ls-label); font-weight:700;
+  position:sticky; top:0; z-index:2; background:var(--elev-2);
+  border-bottom:1px solid var(--line);
+}
+table.t td{padding:var(--sp-3); border-bottom:1px solid var(--line-soft)}
+table.t tbody tr{transition:background var(--dur-fast) var(--ease)}
+table.t tbody tr:hover td{background:var(--surface)}
+table.t tbody tr:last-child td{border-bottom:none}
+table.t td.mono,.mono{font-variant-numeric:tabular-nums; letter-spacing:.01em}
+
+/* ── Cards & KPIs: a real elevation ladder ── */
+.card{padding:var(--sp-4) var(--sp-5)}
+.card.glass{box-shadow:var(--sh-2)}
+.card.glass:hover{box-shadow:var(--sh-3)}
+.kpi b{font-size:var(--fs-3xl); letter-spacing:-.02em; font-variant-numeric:tabular-nums; line-height:var(--lh-tight)}
+.kpi.glass{box-shadow:var(--sh-1)}
+.kpi.glass:hover{box-shadow:var(--sh-2)}
+
+/* ── Forms: consistent label rhythm and a calm focus treatment ── */
+.fld{gap:var(--sp-1)}
+.fld > span{font-size:var(--fs-micro); letter-spacing:var(--ls-label); font-weight:650}
+.fld input,.fld select,.fld textarea{
+  padding:var(--sp-2) var(--sp-3); border-radius:var(--radius-s);
+  font-size:var(--fs-base);
+  transition:border-color var(--dur-fast) var(--ease),
+             box-shadow var(--dur-fast) var(--ease),
+             background var(--dur-fast) var(--ease);
+}
+.fld input:hover:not(:disabled),.fld select:hover:not(:disabled){border-color:var(--tx2)}
+.fld input:focus,.fld select:focus,.fld textarea:focus{
+  outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft);
+}
+.fld .unit{font-size:var(--fs-micro); color:var(--tx2); letter-spacing:.02em}
+.fgrid{gap:var(--sp-2) var(--sp-5)}
+
+/* ── Dialogs: typographic hierarchy (structure untouched) ── */
+.modal{box-shadow:var(--sh-3)}
+.modal h3{font-size:var(--fs-xl); letter-spacing:-.015em; line-height:var(--lh-tight)}
+.modal .sub{font-size:var(--fs-small); line-height:var(--lh-base)}
+
+/* ── Notifications: clear hierarchy at a glance ── */
+.notif{padding:var(--sp-3) var(--sp-4); border-radius:var(--radius-s); margin-bottom:var(--sp-2)}
+.notif b{font-size:var(--fs-base); line-height:var(--lh-tight)}
+.notif .small{margin-top:var(--sp-1); line-height:var(--lh-base); color:var(--tx2)}
+.notif .n-meta{margin-top:var(--sp-2); font-size:var(--fs-micro);
+  letter-spacing:.04em; text-transform:uppercase; color:var(--tx2); opacity:.85}
+.notif.unread{box-shadow:inset 3px 0 0 var(--accent)}
+
+/* ── Tags & chips: one pill system ── */
+.tag{padding:3px var(--sp-2); font-size:var(--fs-micro); letter-spacing:.06em;
+  border-radius:var(--radius-pill); line-height:1.5}
+.sg-chip{transition:background var(--dur-fast) var(--ease),
+  border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease)}
+
+/* ── Page & section headings ── */
+h2.pg{font-size:var(--fs-2xl); letter-spacing:-.02em; line-height:var(--lh-tight)}
+h2.pg small{font-size:var(--fs-small); letter-spacing:0; font-weight:500}
+
+/* ── Empty states: calm, never blank ── */
+.empty{padding:var(--sp-6) var(--sp-5); text-align:center;
+  color:var(--tx2); font-size:var(--fs-small); line-height:var(--lh-base)}
+
+/* ── Stage tabs & rail: crisper affordance ── */
+.stage-tab{transition:background var(--dur-fast) var(--ease),
+  color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease)}
+.rail a{transition:background var(--dur) var(--ease), color var(--dur) var(--ease)}
+.rail-btn{transition:background var(--dur-fast) var(--ease),
+  color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease)}
+
+/* ── Motion honesty: everything above respects reduced-motion ── */
+/* The transition list here was subsumed by the global reduced-motion rule at
+   the top of the file; only the press transform still needs suppressing. */
+@media (prefers-reduced-motion:reduce){
+  .btn:active:not(:disabled){transform:none}
+}
+
+/* ═══ PHASE 4 · LOGOUT + APPROVAL DIALOGS ═══ */
+/* Logout control: always a square instrument key — never a rectangle. */
+#logout-btn{width:44px; height:44px; flex:0 0 44px; aspect-ratio:1; padding:0;
+  display:inline-flex; align-items:center; justify-content:center; font-size:17px}
+@media (max-width:720px){
+  #logout-btn{width:48px; height:48px; flex:0 0 48px; align-self:center}
+}
+.lo-wrap{text-align:center; padding:var(--sp-2) 0 0}
+.lo-mark{display:flex; justify-content:center; margin-bottom:var(--sp-3)}
+.lo-title{font-size:var(--fs-2xl)!important; letter-spacing:-.02em; margin:0 0 var(--sp-2)!important}
+.lo-sub{color:var(--tx2); font-size:var(--fs-base); margin-bottom:var(--sp-5)}
+.lo-sub b{color:var(--tx)}
+.lo-wrap .logout-status{text-align:left}
+.lo-warn{margin-top:var(--sp-3); text-align:left}
+.lo-clear{margin-top:var(--sp-3); font-size:var(--fs-small); color:var(--tx2)}
+.lo-foot{justify-content:center!important}
+.lo-foot .btn{min-width:132px}
+
+/* Approval alert: the plant's most important dialog. */
+.ap-wrap{text-align:center; padding:var(--sp-2) 0 0}
+.ap-badge{display:inline-block; font-size:var(--fs-micro); font-weight:700;
+  letter-spacing:.16em; text-transform:uppercase; color:var(--accent);
+  background:var(--accent-soft); border:1px solid var(--accent);
+  padding:5px var(--sp-3); border-radius:var(--radius-pill); margin-bottom:var(--sp-4)}
+.ap-heat{display:flex; flex-direction:column; align-items:center; gap:var(--sp-1);
+  margin-bottom:var(--sp-3)}
+.ap-heat span{font-size:var(--fs-micro); letter-spacing:var(--ls-label);
+  text-transform:uppercase; color:var(--tx2)}
+.ap-heat b{font-size:var(--fs-3xl); letter-spacing:-.01em; color:var(--tx); line-height:1.1}
+.ap-role{font-size:var(--fs-lg); color:var(--tx); font-weight:600; margin-bottom:var(--sp-2)}
+.ap-body{font-size:var(--fs-small); color:var(--tx2); line-height:var(--lh-base);
+  max-width:44ch; margin:0 auto var(--sp-2)}
+.ap-note{font-size:var(--fs-small); color:var(--tx2); background:var(--surface);
+  border:1px solid var(--line); border-radius:var(--radius-s);
+  padding:var(--sp-3); margin-top:var(--sp-3); text-align:left}
+.ap-foot{justify-content:center!important}
+.ap-foot .btn{min-width:124px}
+@media (max-width:480px){
+  .lo-foot,.ap-foot{flex-direction:column-reverse}
+  .lo-foot .btn,.ap-foot .btn{width:100%}
+}
+
+/* ═══ PHASE 5 · LIVE UPDATE FEEDBACK ═══
+   A component that just updated gives one brief, calm acknowledgement.
+   No spinners, no skeletons, no flashing — the operator sees that the
+   number moved, nothing more. */
+@keyframes livePop{
+  0%{background-color:var(--accent-soft)}
+  100%{background-color:transparent}
+}
+.live-pop{animation:livePop .9s var(--ease) 1; border-radius:var(--radius-s)}
+@media (prefers-reduced-motion:reduce){ .live-pop{animation:none} }
+body[data-theme="lowpower"] .live-pop{animation-duration:.5s}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PHASE 6 · RESPONSIVE HARDENING
+   Guarantees for every page at every width: no text overflow, no cut-off
+   text, no hidden buttons, no broken popups, no uncentered components,
+   no unscrollable dialogs.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* 1 · Nothing may push the page sideways. */
+html,body{max-width:100%; overflow-x:hidden}
+.app,.main,main#view{min-width:0; max-width:100%}
+.card,.kpi,.notif,.tile,.guide,.logout-status,.ap-note{min-width:0}
+
+/* 2 · Long free text wraps; identifiers and numbers never break mid-token. */
+.card p,.card .small,.notif .small,.guide li,.ap-body,.sub,.empty,
+td:not(.mono),.tl-ev{overflow-wrap:anywhere}
+.mono,td.mono,.ap-heat b,.cred-box{overflow-wrap:normal; word-break:keep-all}
+
+/* 3 · Wide tables scroll inside their card instead of clipping.
+   BUG FIX — this was `overflow-x:auto; overflow-y:visible`, which is an
+   INVALID PAIR: per spec, when one axis is `visible` and the other is not,
+   `visible` computes to `auto`. So every card became a scroll container on
+   BOTH axes at every width. Two consequences:
+     · `table.t th{position:sticky}` stuck to the CARD's scrollport instead
+       of the page, so sticky headers never worked;
+     · the `.kpi.hot::before` molten seam was clipped by its own card.
+   Any `overflow-x:auto` triggers this, so the scrolling is now scoped to the
+   widths that actually need it — below 1200px, where a 520px-minimum table
+   genuinely cannot fit. Above that, cards do not scroll and sticky works. */
+@media (max-width:1199px){
+  .card.glass{overflow-x:auto}
+  .card.glass > table.t{min-width:520px}
+}
+
+/* 4 · Dialogs stay centred and fully reachable at any height.
+      (Centring and max-height now live in the base MODAL block; only the
+      tighter backdrop inset is still needed here.) */
+.modal-back{padding:var(--sp-3)}
+@media (max-height:560px){ .modal{max-height:96vh; --modal-pad:var(--sp-4)} }
+
+/* 5 · Header, chips and tab strips scroll rather than wrap into chaos. */
+.statusbar{flex-wrap:wrap; row-gap:var(--sp-2)}
+.nd-chips,.stage-tabs,.sg-switch{overflow-x:auto; -webkit-overflow-scrolling:touch;
+  scrollbar-width:none}
+.nd-chips::-webkit-scrollbar,.stage-tabs::-webkit-scrollbar,
+.sg-switch::-webkit-scrollbar{height:0}
+.nd-chips > *,.stage-tabs > *,.sg-switch > *{flex:0 0 auto}
+
+/* 6 · Phone layout for the components added in Phases 4–5. */
+@media (max-width:560px){
+  .ap-heat b{font-size:var(--fs-2xl)}
+  .ap-badge{letter-spacing:.1em}
+  .lo-title{font-size:var(--fs-xl)!important}
+  .route-opt{padding:var(--sp-3) var(--sp-4)}
+  .cred-box{font-size:var(--fs-lg); letter-spacing:1px}
+  .cred-file{font-size:10.5px; max-height:46vh}
+  .fgrid{grid-template-columns:1fr}
+  .logout-status .row{flex-direction:column; align-items:flex-start; gap:2px}
+  .logout-status .row b{font-size:var(--fs-small)}
+}
+
+/* 7 · Very small phones (360px): keep every control tappable and visible. */
+@media (max-width:400px){
+  main#view{padding-left:var(--sp-3); padding-right:var(--sp-3)}
+  .modal{--modal-pad:var(--sp-4)}   /* footer inset follows automatically */
+  .grid.cols-4,.grid.cols-3{grid-template-columns:1fr 1fr}
+  .kpi b{font-size:var(--fs-2xl)}
+  .btn{padding:var(--sp-2) var(--sp-3)}
+}
+
+/* 8 · Landscape phones: dialogs must never trap their own footer. */
+@media (max-height:480px) and (orientation:landscape){
+  .modal{max-height:94vh}
+  .modal-scroll{max-height:none}
+  .lo-wrap,.ap-wrap{padding-top:0}
+  .lo-mark{display:none}
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   EMERGENCY FIX · ALIGNMENT & DISPLAY HARDENING
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Login page: perfectly centred at every height, card premium on all themes */
+#login-view{min-height:100vh; min-height:100dvh; display:flex;
+  align-items:center; justify-content:center; padding:var(--sp-4)}
+.login-card{margin:0; box-shadow:var(--sh-3)}
+.login-card .fld{margin-bottom:var(--sp-3)}
+.login-err{min-height:20px; font-size:var(--fs-small); color:var(--err);
+  line-height:var(--lh-base); overflow-wrap:anywhere; text-align:center;
+  margin-top:var(--sp-2)}
+body[data-theme="light"] .login-card{border:1px solid var(--line)}
+
+/* Rail icons: geometrically centred, identical hit areas */
+.rail a{display:flex; align-items:center; justify-content:center;
+  height:46px; padding:0}
+.rail a .ic{display:block; line-height:1}
+.rail{align-items:center}
+
+/* Status bar: baseline-aligned, no drift between clock, shift and title */
+.statusbar{align-items:center}
+.statusbar .tag,.statusbar .mono{line-height:1.6; vertical-align:middle}
+
+/* Cards inside grids: equal heights, aligned baselines */
+.grid > .card,.grid > .kpi{height:100%; box-sizing:border-box;
+  display:flex; flex-direction:column}
+.kpi{justify-content:center; align-items:flex-start; gap:2px}
+.card > h3:first-child{margin-top:0}
+
+/* Section rhythm: one vertical beat everywhere */
+.sec{margin-top:var(--sp-4)}
+h2.pg{margin:var(--sp-4) 0 var(--sp-3)}
+
+/* Gantt: the hero can shrink but never collapse or clip its controls */
+.sg-body{min-height:180px}
+.sg-head{align-items:center; row-gap:var(--sp-2)}
+.sg-zoom{display:inline-flex; align-items:center; gap:2px}
+.sg-lab{display:flex; flex-direction:column; justify-content:center}
+.sg-lab b,.sg-lab span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+
+/* Tiles: icon + text on one optical grid */
+.tile{display:flex; flex-direction:column; align-items:flex-start;
+  gap:var(--sp-1); text-align:left}
+
+/* Drawer on phones: full usable width, header always reachable */
+@media (max-width:560px){
+  .drawer{width:100vw; max-width:100vw; border-radius:0}
+  .nd-tools{flex-wrap:wrap}
+  .nd-tools input{flex:1 1 100%; order:-1}
+}
+
+/* Light-mode legibility for tags & chips over pure paper */
+body[data-theme="light"] .tag{background:rgba(16,24,40,.035)}
+body[data-theme="light"] .sg-chip{background:rgba(16,24,40,.03)}
+body[data-theme="light"] .notif{background:#FFF}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   RESPONSIVE REFINEMENT · phone → tablet → control-room desktop
+   Appended last, presentational only: no markup, no handlers, no logic.
+
+   Guiding rule: DENSITY IS A FEATURE on a mouse-driven plant screen, so the
+   44px ergonomics below are scoped to `pointer:coarse` and never tax the
+   desktop instrument layout. Measured against the live DOM, not guessed —
+   the controls listed were the ones actually failing the 44px floor.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Touch ergonomics (WCAG 2.5.5 · 44×44) ──
+   A shift engineer on the floor may be wearing gloves. Every control that
+   commits, filters or navigates has to be hittable without zooming. */
+@media (pointer:coarse){
+  /* Previously 36/40px — under the floor on the two most-tapped controls. */
+  .btn.small{min-height:44px; padding-left:14px; padding-right:14px}
+  .stage-tab{min-height:44px}
+  /* The bell was 38×28: the single most-tapped control in the shell. */
+  .bell{min-width:44px; min-height:44px;
+    display:inline-flex; align-items:center; justify-content:center}
+  /* Gantt controls sat at ~32px tall across the board. */
+  .sg-switch button, .sg-zoom button{min-height:44px; min-width:44px}
+  .sg-head select, #sg-range{min-height:44px}
+  .sg-chip{min-height:36px; display:inline-flex; align-items:center}
+  /* Dialog/drawer dismiss — a 16px glyph is not a target. */
+  .x{min-width:44px; min-height:44px}
+  .linkbtn{min-height:44px}
+  /* Size alone is not enough: adjacent targets need real separation. */
+  .sg-switch{gap:6px}
+  .sg-zoom{gap:6px}
+  /* Drill-in links inside Gantt lanes were 60×16 — too small to hit. They
+     grow to fill the label gutter but deliberately STOP SHORT of 44px:
+     forcing it pushed the lane row 62px→79px, and at-a-glance lane density
+     is the Gantt's entire reason for existing. The bar itself (47×48) is
+     the primary drill-in target and already clears the floor. */
+  .sg-lab a{display:flex; align-items:center; min-height:34px; width:100%}
+  /* Machine-board heat numbers are INLINE values inside a data row (WCAG
+     2.5.5 inline exception): forcing 44px would add ~150px to every card,
+     so they get a real hit area instead of a full block target. */
+  .mb-card .link, .link{display:inline-block; padding:6px 2px}
+  /* Stop accidental pull-to-refresh over the scrollable Gantt. */
+  .sg-body{overscroll-behavior:contain}
+}
+
+/* ── Tablet 721–1024 ──
+   The vertical rail is retained (it is the app's spine), so the Gantt buys
+   back horizontal room from its label gutter rather than from the bars. */
+@media (min-width:721px) and (max-width:1024px){
+  main#view{padding:16px 18px 60px}
+  .statusbar{margin:10px 14px 0; padding:10px 14px}
+  .sg-lab{width:122px; flex:0 0 122px}
+  .tiles{grid-template-columns:repeat(auto-fill,minmax(172px,1fr))}
+  .mb-grid{grid-template-columns:repeat(auto-fill,minmax(215px,1fr))}
+  .rg-opts{grid-template-columns:repeat(3,1fr)}
+  /* Status bar reads as one line of instruments, never a wrapped jumble. */
+  .sb-plant{gap:16px}
+  .sb-title{letter-spacing:1.4px; font-size:12px}
+}
+
+/* ── Large desktop ≥1440 · the control-room screen ──
+   More lanes legible at a glance and a wider content field, without letting
+   measure run away: tables and prose stay inside a readable column. */
+@media (min-width:1440px){
+  main#view{max-width:1720px; padding:22px 34px 70px}
+  .sg-lab{width:186px; flex:0 0 186px}
+  .sg-body{min-height:240px}
+  .mb-grid{grid-template-columns:repeat(auto-fill,minmax(258px,1fr))}
+  .tiles{grid-template-columns:repeat(auto-fill,minmax(208px,1fr))}
+  .statusbar{margin:12px 26px 0}
+}
+
+/* ═══ PHONE OVERFLOW NAVIGATION ═══
+   The bottom bar previously carried 11 items across ~600px on a 375px
+   screen, so Sign out and Theme sat off-screen behind a horizontal scroll —
+   an overloaded nav (bottom-nav-limit) that also buried a destructive
+   action. Now: 4 primary destinations + More. Nothing was removed. */
+.rail-more{display:none}          /* desktop keeps the full vertical rail */
+
+.more-sheet{position:fixed; inset:0; z-index:90; display:flex;
+  align-items:flex-end; background:rgba(4,7,16,.55)}
+.more-sheet.hidden{display:none}
+.ms-panel{width:100%; max-height:82vh; overflow-y:auto;
+  background:var(--elev-2); border-top:1px solid var(--line);
+  border-radius:var(--radius-l) var(--radius-l) 0 0;
+  padding:var(--sp-2) var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom,0px));
+  box-shadow:var(--sh-3)}
+.ms-grip{width:38px; height:4px; border-radius:99px; background:var(--line);
+  margin:var(--sp-2) auto var(--sp-1)}
+.ms-head{display:flex; justify-content:space-between; align-items:center;
+  padding:var(--sp-2) 0 var(--sp-3)}
+.ms-head b{font-size:var(--fs-lg)}
+.ms-links{display:grid; grid-template-columns:repeat(auto-fill,minmax(148px,1fr));
+  gap:var(--sp-2)}
+.ms-links a, .ms-util{display:flex; align-items:center; gap:var(--sp-3);
+  min-height:52px; padding:0 var(--sp-4); border-radius:var(--radius-s);
+  border:1px solid var(--line); background:var(--surface-solid);
+  color:var(--tx); text-decoration:none; font-size:var(--fs-base);
+  width:100%; cursor:pointer; text-align:left}
+.ms-links a i, .ms-util i{font-style:normal; font-size:18px; color:var(--tx2);
+  width:22px; text-align:center; flex:0 0 22px}
+.ms-links a:active, .ms-util:active{border-color:var(--accent)}
+.ms-links a.active{border-color:var(--accent); background:var(--accent-soft)}
+/* destructive-nav-separation: its own group, above the fold of the thumb. */
+.ms-utility{display:grid; gap:var(--sp-2); margin-top:var(--sp-4);
+  padding-top:var(--sp-4); border-top:1px solid var(--line)}
+.ms-util.danger{color:var(--err); border-color:rgba(229,72,77,.35)}
+.ms-util.danger i{color:var(--err)}
+
+@media (max-width:720px){
+  /* Secondary destinations move into the sheet; More takes the 5th slot. */
+  .rail a[data-tier="secondary"]{display:none}
+  .rail-more{display:flex; flex-direction:column; align-items:center;
+    justify-content:center; flex:0 0 auto; width:56px; height:52px;
+    border:none; background:none; color:var(--tx2); cursor:pointer;
+    font-size:19px; line-height:1; border-radius:12px; padding:0}
+  .rail-more span{font-size:9.5px; letter-spacing:.6px; margin-top:4px;
+    text-transform:uppercase}
+  .rail-more[aria-expanded="true"]{color:var(--tx); background:var(--accent-soft)}
+  /* Utility buttons live in the sheet on phones, not the bar.
+     #logout-btn is pinned by an ID rule (the square-instrument-key law),
+     so these must match ID specificity or the class selector loses. */
+  .rail-btn, #theme-btn, #logout-btn{display:none}
+  /* 5 slots now fit: distribute them instead of scrolling. */
+  .rail{overflow-x:visible; justify-content:space-around; gap:0}
+}
+
+/* ── Wall display ≥1920 ──
+   Seen from across the bay: the KPI row holds four across and the plant-day
+   instruments grow, while body copy keeps its size. */
+@media (min-width:1920px){
+  main#view{max-width:1960px}
+  .grid.cols-4{grid-template-columns:repeat(4,1fr)}
+  .kpi b{font-size:34px}
+  .sb-plant b{font-size:19px}
+  .sg-body{min-height:300px}
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOOK · INSTRUMENT PANEL                                        (appended last)
+   ───────────────────────────────────────────────────────────────────────────
+   A change of thesis, not a repaint. The previous surface — aurora blobs,
+   frosted glass, amber glow everywhere — is the generic "premium dark
+   dashboard" look; it could belong to any product. This one belongs to a
+   steel melting shop: cold rolled panel faces, hairline seams, readings set
+   like instruments, and molten amber RATIONED so that it means something.
+
+   THE ONE RULE: amber = live metal. If it is not currently hot, it is steel.
+   Spending the accent everywhere is what made it decorative and mute.
+
+   Structure is untouched by design — no markup, no reordering, no handlers.
+   The Gantt stays the hero at the top; KPI cards keep their slots. This file
+   only restyles surfaces, so reverting this block restores the old skin.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══ PHASE 2 · THE FOUR THEMES — one complete token set each ═══════════════
+   Previously --sh-1/2/3 were re-tuned for `dark` ONLY, so black and light
+   rendered the panel system with the retired glassmorphism elevation ladder,
+   and --glassblur was missing from lowpower entirely. Every theme below now
+   declares the SAME complete set: surfaces, lines, text, elevation, blur,
+   scrim, focus and accent-text. A token present in only some themes is a
+   theme-specific bug waiting to happen.
+
+   Direction: dark & black get REFINED GLASS (Tesla / Halo Lab) — real
+   backdrop-blur and layered depth, but no animated aurora, which was two
+   52vw conic gradients under blur(110px) looping forever. Light is Apple /
+   Notion / Linear paper. Low power is flat and static by definition. */
+
+/* The aurora stays retired in every theme: weather is not information. */
+
+/* ── DARK · Tesla / Halo Lab — deep indigo-slate, real glass ─────────────── */
+body[data-theme="dark"]{
+  --bg:#0A0E13; --bg2:#10161D;
+  --surface:rgba(24,31,40,.72);          /* translucent → the blur reads */
+  --surface-solid:#141A21;
+  --elev-1:#10161D; --elev-2:#151C24; --elev-3:#1D2530;
+  --line:rgba(148,170,200,.15); --line-soft:rgba(148,170,200,.08);
+  --tx:#E8EDF3; --tx2:#8C9AAA;
+  --glassblur:18px;
+  --scrim:rgba(4,7,12,.62);
+  --focus-ring:rgba(255,138,61,.55);
+  --sh-1:0 1px 2px rgba(0,0,0,.34);
+  --sh-2:0 4px 16px rgba(0,0,0,.40);
+  --sh-3:0 18px 44px rgba(0,0,0,.56);
+  background:linear-gradient(180deg,#0C1119 0%,#0A0E13 34%,#090D12 100%);
+  background-attachment:fixed;
+}
+
+/* ── PURE BLACK · OLED — true #000, same structure, deeper seams ─────────── */
+body[data-theme="black"]{
+  --bg:#000; --bg2:#06090C;
+  --surface:rgba(14,18,24,.74);
+  --surface-solid:#0B0F14;
+  --elev-1:#06090C; --elev-2:#0C1116; --elev-3:#141A21;
+  --line:rgba(150,168,190,.16); --line-soft:rgba(150,168,190,.08);
+  --tx:#EDF2F7; --tx2:#8A97A6;
+  --glassblur:16px;
+  --scrim:rgba(0,0,0,.72);
+  --focus-ring:rgba(255,138,61,.6);
+  --sh-1:0 1px 2px rgba(0,0,0,.6);
+  --sh-2:0 4px 16px rgba(0,0,0,.66);
+  --sh-3:0 18px 44px rgba(0,0,0,.8);
+  background:#000;
+}
+
+/* ── WHITE · Apple / Notion / Linear — paper, hairlines, restraint ───────── */
+body[data-theme="light"]{
+  /* --bg MUST match the real canvas: .sg-lab fades to var(--bg) over the
+     Gantt gutter, and a mismatch painted a visible white smear there. */
+  --bg:#FBFCFD; --bg2:#F4F6F8;
+  --surface:rgba(255,255,255,.78);
+  --surface-solid:#FFFFFF;
+  --elev-1:#F4F6F8; --elev-2:#FFFFFF; --elev-3:#FFFFFF;
+  --line:#DDE2E8; --line-soft:#EDF0F4;
+  --tx:#10151B; --tx2:#5A6673;
+  --glassblur:20px;
+  --scrim:rgba(16,24,40,.34);            /* light scrim on a light canvas */
+  --focus-ring:rgba(255,138,61,.65);
+  --sh-1:0 1px 2px rgba(16,24,40,.06);
+  --sh-2:0 2px 8px rgba(16,24,40,.08), 0 1px 2px rgba(16,24,40,.04);
+  --sh-3:0 16px 40px rgba(16,24,40,.14), 0 2px 6px rgba(16,24,40,.06);
+  background:linear-gradient(180deg,#FBFCFD 0%,#F4F6F8 100%);
+  background-attachment:fixed;
+}
+
+/* ── LOW POWER · static, opaque, no blur, no loops ───────────────────────── */
+body[data-theme="lowpower"]{
+  --bg:#0E1319; --bg2:#141B24;
+  --surface:#171E28; --surface-solid:#171E28;
+  --elev-1:#141B24; --elev-2:#171E28; --elev-3:#1E2733;
+  --line:#2A3442; --line-soft:rgba(255,255,255,.05);
+  --tx:#EAF0F7; --tx2:#93A2B4;
+  --glassblur:0px;
+  --scrim:rgba(6,10,16,.66);
+  --focus-ring:rgba(255,138,61,.55);
+  --sh-1:0 1px 2px rgba(0,0,0,.3);
+  --sh-2:0 4px 14px rgba(0,0,0,.34);
+  --sh-3:0 10px 28px rgba(0,0,0,.44);
+}
+
+/* ── ACCENT-TEXT PER THEME ─────────────────────────────────────────────────
+   On the dark themes the module accent is already legible, so accent-text
+   tracks it directly (inherited from body{--accent-tx:var(--accent)}).
+   On paper it is not: #FF8A3D on white measures 2.23:1, far under the 4.5:1
+   floor — and amber now CARRIES INFORMATION (live metal), so it has to be
+   readable. Each module therefore gets a darkened twin for light mode.
+   Fills and bars keep the bright hue; only TEXT switches. */
+body[data-theme="light"]{                          --accent-tx:#8A3D05;
+                                                   --st-event-route:#6D28D9; }
+body[data-theme="light"][data-view="entry"]{       --accent-tx:#0A5B80; }
+body[data-theme="light"][data-view="heats"]{       --accent-tx:#2A5F87; }
+body[data-theme="light"][data-view="reports"]{     --accent-tx:#7A5300; }
+body[data-theme="light"][data-view="search"]{      --accent-tx:#00647D; }
+body[data-theme="light"][data-view="calculator"]{  --accent-tx:#5B2FB8; }
+body[data-theme="light"][data-view="knowledge"]{   --accent-tx:#6B2E96; }
+body[data-theme="light"][data-view="admin"]{       --accent-tx:#A31232; }
+
+/* ── 3 · Surfaces: glass panels with a seam ─────────────────────────────── */
+.glass{
+  background:var(--surface);
+  backdrop-filter:blur(var(--glassblur)) saturate(1.12);
+  -webkit-backdrop-filter:blur(var(--glassblur)) saturate(1.12);
+  border:var(--seam) solid var(--line);
+  box-shadow:var(--sh-1);
+}
+/* No blur support, or low power: fall back to the opaque face. */
+@supports not (backdrop-filter:blur(1px)){ .glass{background:var(--surface-solid)} }
+body[data-theme="lowpower"] .glass{background:var(--surface-solid)}
+.statusbar{
+  background:var(--elev-1);
+  border:var(--seam) solid var(--line);
+  border-radius:var(--radius);
+}
+/* A module reads as a plate bolted to the console: one seam, one shadow. */
+.card, .kpi, .tile, .mb-card, .notif, .drawer, .modal, .ms-panel, .route-gate{
+  background:var(--elev-2);
+  border-color:var(--line);
+}
+.tile{box-shadow:var(--sh-1)}
+.tile:hover{border-color:var(--tx2); transform:none; box-shadow:var(--sh-2)}
+
+/* ── 4 · Readings: values are instruments, labels get out of the way ────── */
+.kpi b, .sb-plant b, .hr-no, td.mono, .mono{
+  font-family:var(--mono); font-variant-numeric:tabular-nums;
+  letter-spacing:-.01em;
+}
+.kpi span, .card h3, .sb-plant label, .t th{
+  color:var(--tx2); text-transform:uppercase;
+  letter-spacing:.14em; font-size:var(--fs-micro); font-weight:600;
+}
+.t th{border-bottom:var(--seam) solid var(--line)}
+.t td{border-bottom:var(--seam) solid var(--line-soft)}
+
+/* ── 5 · Rationing the accent ───────────────────────────────────────────────
+   Previously amber marked everything and therefore nothing. Idle, pending and
+   merely-selected states drop to steel; amber is retained ONLY below, for
+   metal that is actually live. */
+.kpi b{color:var(--tx)}
+.tag.pending, .tag.created{color:var(--tx2); border-color:var(--line)}
+.tile:hover .ti{color:inherit}
+.rail a.active{
+  color:var(--tx); background:var(--elev-3);
+  box-shadow:inset 2px 0 0 var(--accent);      /* a lit key on the console */
+}
+
+/* ── 6 · SIGNATURE · the molten seam ────────────────────────────────────────
+   A 2px amber edge that appears only where the plant is genuinely hot.
+   Scanning the console for amber is scanning for live metal.
+
+   BUG FIX: this previously targeted `.mb-card.running` and
+   `.heat-rail .step.running` — NEITHER SELECTOR EVER MATCHED. A machine card
+   is emitted as `class="mb-card glass"` with its state on a CHILD
+   (`.mb-state.tag.RUNNING`), and heat rails use `.hr-node`, not `.step`. The
+   signature silently did nothing on the two surfaces it mattered most on.
+   Now driven by :has() with a no-:has() fallback below. */
+.kpi.hot, .tag.open, .tag.running, .tag.in_progress, .sg-bar.live{
+  position:relative;
+}
+.kpi.hot::before{
+  content:""; position:absolute; inset:0 auto 0 0; width:2px;
+  background:linear-gradient(180deg, var(--accent), #C24E12);
+  border-radius:var(--radius) 0 0 var(--radius);
+}
+/* Machine card: state lives on the child chip, so match the real markup. */
+.mb-card:has(.mb-state.RUNNING){position:relative}
+.mb-card:has(.mb-state.RUNNING)::before{
+  content:""; position:absolute; inset:0 auto 0 0; width:2px;
+  background:linear-gradient(180deg, var(--accent), #C24E12);
+  border-radius:var(--radius) 0 0 var(--radius);
+}
+/* Heat rail: the running step is .hr-node.running, not .step.running. */
+.heat-rail .hr-node.running{position:relative}
+
+/* No color-mix()/relative-color here: this is an offline plant intranet and
+   those need Chrome 111+ / Firefox 113+. --accent-soft is already a
+   per-module token, so the chip tracks the accent without them. */
+.tag.open, .tag.running, .tag.in_progress{
+  color:var(--accent-tx);
+  border-color:var(--accent);
+  background:var(--accent-soft);
+}
+/* The live Gantt bar keeps its heat; idle bars cool to steel.
+   `filter` forces a raster layer per bar, so it is scoped to the themes
+   where the contrast actually needs help. */
+.sg-bar:not(.live){opacity:.82}
+
+/* ── 7 · Controls: machined keys ────────────────────────────────────────── */
+.btn:not(.primary):not(.danger){
+  background:var(--elev-3); border-color:var(--line); color:var(--tx);
+}
+.btn:not(.primary):not(.danger):hover{border-color:var(--tx2)}
+/* BUG FIX: the primary button was a HARDCODED amber gradient, so it ignored
+   --accent entirely — while the per-view rules above still recoloured its
+   TEXT. That produced teal-black text on an amber button in the entry view.
+   Token-driven again, so all eight module accents work. */
+.btn.primary{
+  background:var(--grad-molten);
+  border-color:transparent; font-weight:700;
+}
+input, select, textarea{
+  background:var(--elev-1); border-radius:var(--radius-s);
+  border:var(--seam) solid var(--line);
+}
+input:focus, select:focus, textarea:focus{border-color:var(--accent)}
+
+/* ── 8 · Control geometry ───────────────────────────────────────────────────
+   All values now resolve to the radius scale in the single :root block.
+   No literals: --radius-s inputs/small, --radius default, --radius-l dialogs,
+   --radius-pill for things that were always pills. */
+.btn{border-radius:var(--radius)}
+.btn.small{border-radius:var(--radius-s)}
+input, select, textarea{border-radius:var(--radius-s)}
+.tile, .kpi, .card, .mb-card, .statusbar, .route-gate,
+.rg-opt, .route-opt, .ms-links a, .ms-util{border-radius:var(--radius)}
+.rail a, .rail-more{border-radius:var(--radius)}
+.sg-switch button, .sg-zoom button{border-radius:var(--radius-s)}
+.modal, .drawer, .ms-panel{border-radius:var(--radius-l)}
+/* .stage-tab and .tag keep --radius-pill: they were always pills. */
+
+/* ── 9 · Focus: one visible ring, from the token that was never used ────────
+   --focus-ring was defined in all four themes and referenced ZERO times,
+   while focus outlines were hardcoded `2px solid var(--accent)` in four
+   places. Keyboard operability is a control-room requirement, not a detail. */
+:where(a,button,input,select,textarea,[tabindex]):focus-visible{
+  outline:2px solid var(--accent);
+  outline-offset:2px;
+  border-radius:var(--radius-s);
+}
+.btn:focus-visible, .tile:focus-visible, .stage-tab:focus-visible{
+  box-shadow:0 0 0 3px var(--focus-ring);
+}
+
+/* One scrim token, used by both overlay surfaces. There were two different
+   hardcoded scrims — a dark one that stayed dark over the paper theme. */
+.modal-back{background:var(--scrim)}
+.more-sheet{background:var(--scrim)}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHASE 3 · THE MISSING COMPONENTS
+   ───────────────────────────────────────────────────────────────────────────
+   Each class below already existed in the product — as an inline style pasted
+   into JS template strings, between 2 and 8 times each. That is how a design
+   system dies: the "section eyebrow" appeared 3×, the filter bar 8×, the
+   number input 4× (and had ALREADY drifted, 6px padding in three places and
+   7px in the fourth). Naming them makes them themeable, responsive and
+   changeable in one place.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Section eyebrow — the quiet uppercase label above a region. Was inlined 3×. */
+.eyebrow{
+  margin:0 0 var(--sp-3);
+  color:var(--tx2); font-size:var(--fs-micro); font-weight:600;
+  letter-spacing:var(--ls-label); text-transform:uppercase;
+}
+.eyebrow.tight{margin-bottom:var(--sp-2)}
+.eyebrow.spaced{margin-top:var(--sp-5)}
+
+/* Filter bar — a row of controls above a table. Was 8 copies of
+   `style="margin:0;flex:1"` plus `align-self:flex-end` on the trailing button. */
+.filter-bar{
+  display:flex; flex-wrap:wrap; gap:var(--sp-3); align-items:flex-end;
+}
+.filter-bar .fld{margin:0; flex:1 1 150px; min-width:0}
+.filter-bar .fld.wide{flex:2 1 240px}
+.filter-bar .btn{flex:0 0 auto}
+/* Pushes a trailing group to the right edge (reports bar has two groups). */
+.filter-bar .fb-gap{flex:1 1 0; min-width:0}
+/* On a phone a filter bar is a stack, and every control spans the width. */
+@media (max-width:720px){
+  .filter-bar{gap:var(--sp-2)}
+  .filter-bar .fld, .filter-bar .fld.wide{flex:1 1 100%}
+  .filter-bar .btn{flex:1 1 auto}
+  .filter-bar .fb-gap{display:none}
+}
+
+/* Scrollable panel — was six different arbitrary heights (240/260/280/300/
+   480px/60vh) for one idea. Three named steps instead. */
+.scroll-panel{overflow:auto; overscroll-behavior:contain}
+.scroll-panel.sm{max-height:260px}
+.scroll-panel.md{max-height:340px}
+.scroll-panel.lg{max-height:60vh}
+
+/* Findings: the success variant. Was faked inline 3× as
+   `style="border-color:var(--ok)"` with a nested `style="color:var(--ok)"`. */
+.finding.ok{border-color:var(--ok); background:var(--ok-soft)}
+.finding.ok > b{color:var(--ok)}
+
+/* Data cells that carry meaning. Were inline colour+weight, twice each. */
+td.cell-new, .cell-new{color:var(--accent-tx); font-weight:700}
+td.cell-bad, .cell-bad{color:var(--err); font-weight:700}
+
+/* Horizontal field (checkbox + label on one line). Was inlined 4× as
+   `flex-direction:row;align-items:center;gap:9px` plus a type reset. */
+.fld.inline{
+  display:flex; flex-direction:row; align-items:center; gap:var(--sp-2);
+  margin-bottom:var(--sp-2);
+}
+.fld.inline > span{
+  text-transform:none; letter-spacing:0; font-size:var(--fs-body);
+  color:var(--tx); font-weight:500;
+}
+.fld.inline.locked{opacity:.65}
+.fld.inline input[type="checkbox"]{flex:0 0 auto; width:18px; height:18px; margin:0}
+
+/* Compact numeric input used inside dense tables (spec limits, settings).
+   Was the same five declarations pasted 4× — and already drifted. */
+.num-input{
+  width:100%; padding:var(--sp-2);
+  background:var(--surface-solid); color:var(--tx);
+  border:var(--seam) solid var(--line); border-radius:var(--radius-s);
+  font:inherit; font-size:var(--fs-body);
+  font-variant-numeric:tabular-nums;
+}
+.num-input:focus{outline:2px solid var(--accent); outline-offset:1px}
+
+/* Plain-text run inside an uppercase context — was `text-transform:none;
+   letter-spacing:0` inlined wherever a total or hint sat next to a label. */
+.plain{text-transform:none; letter-spacing:0}
+
+/* Accent-edged card (AI answer). Was `style="border-left:3px solid …"`. */
+.card.accent{border-left:3px solid var(--accent)}
+
+/* Legend swatch base — colour comes from the [data-sw] rules above. */
+.sg-legend i{display:inline-block; width:14px; height:9px; border-radius:2px;
+  margin-right:var(--sp-1); vertical-align:middle}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHASE 4 · DIALOG INTEGRITY
+   "Every popup shall scroll properly, never overflow, never hide buttons,
+   never cut text." The rules below are what make that true rather than
+   aspirational.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* BUG FIX — `.fld input{width:100%}` was applying to CHECKBOXES and RADIOS
+   too, stretching a 13px control to the full field width. With the browser's
+   default checkbox margin that pushed 4px past the scroll region, giving the
+   notification-preferences dialog a permanent horizontal scrollbar. A tick box
+   has an intrinsic size; it is not a text field. */
+.fld input[type="checkbox"], .fld input[type="radio"],
+input[type="checkbox"], input[type="radio"]{
+  width:auto; min-width:0; flex:0 0 auto;
+  inline-size:auto;
+  accent-color:var(--accent);
+}
+/* Touch devices need a real target on a tick box (WCAG 2.5.5). */
+@media (pointer:coarse){
+  .fld input[type="checkbox"], .fld input[type="radio"],
+  input[type="checkbox"], input[type="radio"]{ width:22px; height:22px; }
+}
+
+/* NOTHING inside a dialog may force horizontal scrolling. Long grade codes,
+   file paths and heat numbers wrap or ellipsis instead of cutting. */
+.modal-scroll{overflow-x:hidden}
+.modal-scroll > *{max-width:100%}
+.modal-scroll img,
+.modal-scroll input, .modal-scroll select, .modal-scroll textarea{max-width:100%}
+.modal-scroll pre, .modal-scroll code{white-space:pre-wrap; word-break:break-word}
+.modal-scroll h3, .modal-scroll .sub, .modal-scroll p, .modal-scroll li{
+  overflow-wrap:anywhere;
+}
+/* A wide table is the one legitimate exception — it gets its own scroller
+   rather than making the whole dialog scroll sideways. */
+.modal-scroll table.t{width:100%}
+.modal-scroll .scroll-panel{max-width:100%; overflow-x:auto}
+
+/* Stacked dialogs (forgot-password → issued credentials, ledger re-auth →
+   ledger) must sit above their parent, not beside it. */
+.modal-root > .modal-back ~ .modal-back{z-index:91}
+
+/* A <select> reports the width of its LONGEST option, which on a phone can
+   exceed the field. It cannot wrap, so truncate it gracefully rather than
+   letting its intrinsic width push the dialog sideways. min-width:0 stops
+   that width propagating up through grid/flex parents. */
+.fld select, .modal-scroll select, .filter-bar select{
+  min-width:0; max-width:100%;
+  text-overflow:ellipsis;
+}
+.fld, .fgrid, .filter-bar > *{min-width:0}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHASE 5 · RESPONSIVE — one monotonic ladder
+   ───────────────────────────────────────────────────────────────────────────
+   BUG FIX (column inversion). Two rules disagreed at different specificities:
+       @media(max-width:760px){ .cols-4{1fr} }            /* 0-1-0 */
+       @media(max-width:720px){ .grid.cols-4{1fr 1fr} }   /* 0-2-0 */
+   Markup is always `class="grid cols-4"`, so the 0-2-0 rule won below 720px.
+   Net effect: a 4-column grid showed ONE column at 750px and TWO at 720px —
+   narrowing the viewport INCREASED the column count.
+
+   The ladder below is monotonic by construction: columns only ever decrease
+   as the viewport narrows. All rules use `.grid.cols-N` so they share one
+   specificity and are ordered, not fought over. Five breakpoints, no more:
+       ≤480 phone · ≤720 large phone · ≤1024 tablet · ≥1440 · ≥1920
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Desktop baseline (≥1025px) */
+.grid.cols-2{grid-template-columns:repeat(2,1fr)}
+.grid.cols-3{grid-template-columns:repeat(3,1fr)}
+.grid.cols-4{grid-template-columns:repeat(4,1fr)}
+
+/* Tablet 721–1024: four becomes two, three becomes two, two stays two. */
+@media (max-width:1024px){
+  .grid.cols-4{grid-template-columns:repeat(2,1fr)}
+  .grid.cols-3{grid-template-columns:repeat(2,1fr)}
+  .grid.cols-2{grid-template-columns:repeat(2,1fr)}
+}
+
+/* Large phone 481–720: paired tiles still read; two-column prose does not. */
+@media (max-width:720px){
+  .grid.cols-4{grid-template-columns:repeat(2,1fr)}
+  .grid.cols-3{grid-template-columns:repeat(2,1fr)}
+  .grid.cols-2{grid-template-columns:1fr}
+}
+
+/* Phone ≤480: a single column, always. */
+@media (max-width:480px){
+  .grid.cols-4, .grid.cols-3, .grid.cols-2{grid-template-columns:1fr}
+}
+
+/* Wall display: the KPI row goes back to four across. */
+@media (min-width:1920px){
+  .grid.cols-4{grid-template-columns:repeat(4,1fr)}
+}
+
+/* ── The logout key is square at EVERY breakpoint ──────────────────────────
+   "The logout icon shall never become a horizontal rectangle." aspect-ratio
+   alone is not enough once a flex parent can stretch it, so the basis is
+   pinned too. Applies whether it sits in the rail or the phone sheet. */
+#logout-btn{
+  aspect-ratio:1; flex:0 0 auto;
+  width:44px; height:44px; padding:0;
+  align-items:center; justify-content:center;
+}
+/* CAREFUL: do NOT set `display` here. On phones the key lives in the More
+   sheet, not the bar, and an ID-specificity `display:inline-flex` would beat
+   the rule that hides it — which is exactly how it reappeared as a 6th slot
+   and undid the bottom-nav fix. Display stays owned by the nav rules; this
+   block only governs SHAPE. */
+.rail #logout-btn{display:inline-flex}
+@media (max-width:720px){ .rail #logout-btn{display:none} }
+@media (pointer:coarse) and (min-width:721px){ #logout-btn{width:48px; height:48px} }
+
+/* ── Touch ergonomics — the single authoritative coarse-pointer block ──────
+   Density is a feature on a mouse-driven control-room screen, so every 44px
+   minimum here is scoped to coarse pointers and costs desktop nothing. */
+@media (pointer:coarse){
+  .btn, .btn.small{min-height:44px}
+  .stage-tab{min-height:44px}
+  .bell{min-width:44px; min-height:44px;
+    display:inline-flex; align-items:center; justify-content:center}
+  .sg-switch button, .sg-zoom button{min-height:44px; min-width:44px}
+  .sg-head select, #sg-range{min-height:44px}
+  .x{min-width:44px; min-height:44px}
+  .linkbtn{min-height:44px}
+  .sg-switch, .sg-zoom{gap:var(--sp-1)}
+  input, select, textarea{font-size:16px}   /* prevents iOS focus zoom */
+  .modal-foot .btn{min-height:46px}
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHASE 6 · THE TABLE SYSTEM — one instrument, one density
+   ───────────────────────────────────────────────────────────────────────────
+   `table.t` was declared across four layers with drifting values: cell padding
+   went 7px 9px → var(--sp-3) → 7px 8px on phones; the row border was declared
+   three times (--line, then --line-soft, then --seam solid --line-soft); and
+   header tracking used three different systems (1px, --ls-label, .14em).
+   This is the settled definition. A production table is an instrument: figures
+   align on the decimal, headers stay put, and nothing shifts between views.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+table.t{
+  width:100%; border-collapse:collapse;
+  font-size:var(--fs-body);
+  font-variant-numeric:tabular-nums;   /* every column aligns, not just .mono */
+}
+table.t thead th{
+  padding:var(--sp-2) var(--sp-3);
+  font-size:var(--fs-micro); font-weight:700;
+  letter-spacing:var(--ls-label); text-transform:uppercase;
+  color:var(--tx2); text-align:left; white-space:nowrap;
+  position:sticky; top:0; z-index:2;
+  background:var(--elev-2);
+  border-bottom:var(--seam) solid var(--line);
+}
+table.t td{
+  padding:var(--sp-2) var(--sp-3);
+  border-bottom:var(--seam) solid var(--line-soft);
+  vertical-align:middle;
+}
+table.t tbody tr{transition:background var(--dur-fast) var(--ease)}
+table.t tbody tr:hover td{background:var(--surface)}
+table.t tbody tr:last-child td{border-bottom:none}
+
+/* Numbers right-align so magnitude is readable down the column; identifiers
+   and free text stay left. Opt in with .num on the cell or column. */
+table.t td.num, table.t th.num{text-align:right}
+table.t td.mono, .mono{font-family:var(--mono); letter-spacing:.01em}
+
+/* Zebra only where a table is genuinely long — banding short tables is noise. */
+table.t.long tbody tr:nth-child(even) td{background:var(--line-soft)}
+
+/* Phones: tighter gutters so one more column survives before scrolling. */
+@media (max-width:480px){
+  table.t{font-size:var(--fs-small)}
+  table.t thead th, table.t td{padding:var(--sp-2)}
+}
+
+/* A table inside a scroll panel keeps its header pinned to that panel. */
+.scroll-panel table.t thead th{position:sticky; top:0}
+
+/* BUG FIX — `.glass{overflow:hidden}` (added so the ::before highlight line
+   could not spill past the rounded corners) made EVERY card a clipping box.
+   Two things broke silently:
+     · `table.t thead th{position:sticky}` had no usable scrollport, so
+       sticky headers never actually stuck;
+     · `.kpi.hot::before` — the molten seam — was clipped away by its own card.
+   Cards and KPIs opt back out; the highlight is inset instead of clipped, so
+   it still respects the corner radius. Surfaces that genuinely must clip
+   (modal, drawer, Gantt hero) keep hidden. */
+.card.glass, .kpi.glass, .heat-rail.glass{overflow:visible}
+.glass::before{border-radius:var(--radius) var(--radius) 0 0; left:1px; right:1px}
+/* Below 1200px a wide table still needs its card to scroll sideways; sticky
+   then pins to that scrollport, which is the correct behaviour there. */
+@media (max-width:1199px){
+  .card.glass{overflow-x:auto; overflow-y:hidden}
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHASE 7 · REAL-TIME COST
+   ───────────────────────────────────────────────────────────────────────────
+   The 2-second PULSE engine, its eight domains and every handler are
+   UNTOUCHED — this phase changes only what the browser does between ticks.
+
+   The problem was not the polling (~450 bytes, ~5-17ms). It was the animation
+   riding on top of it. `@keyframes pulse` animated BOX-SHADOW, which cannot be
+   composited and repaints its element every frame. It had SEVEN consumers,
+   several of them multiplied by live data:
+       .tag.RUNNING       × every running machine on the status board
+       .tag.DELAYED       × every delayed machine
+       .hr-node.running   × every running step of every heat rail
+       .sg-bar.live::after× every live Gantt bar (stacked on top of `flow`)
+       .sg-live::before, .sg-delay.shutdown, .ai-card.critical
+   On a populated control-room dashboard that is 15-25 concurrent infinite
+   animations repainting continuously — on a plant workstation, forever.
+
+   Fix: pulse now animates OPACITY, which the compositor handles on the GPU
+   with no paint. Identical "breathing" semantics, a fraction of the cost.
+   Static glows are kept as static box-shadows, so nothing loses its weight.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@keyframes pulse{
+  0%, 100%{opacity:1}
+  50%     {opacity:.58}
+}
+/* The live-state glows that `pulse` used to animate are now painted once. */
+.hr-node.running{box-shadow:0 0 0 3px var(--accent-soft)}
+.tag.RUNNING{box-shadow:0 0 8px rgba(55,194,160,.28)}
+.tag.DELAYED{box-shadow:0 0 8px rgba(245,197,66,.28)}
+
+/* The Gantt label gutter is `position:sticky` and recomposited on every
+   horizontal scroll — a backdrop-filter there meant ONE BLUR LAYER PER LANE.
+   An opaque gutter is cheaper and actually more legible over moving bars. */
+.sg-lab{
+  background:var(--elev-2);
+  backdrop-filter:none; -webkit-backdrop-filter:none;
+  box-shadow:1px 0 0 var(--line);
+}
+
+/* The primary button's sheen transitioned `left` — a LAYOUT property, so every
+   frame of the hover ran layout. Same visual on the compositor via transform. */
+.btn.primary::after{
+  left:0; transform:translateX(-170%) skewX(-18deg);
+  transition:transform .5s var(--ease);
+  will-change:transform;
+}
+.btn.primary:hover::after{transform:translateX(320%) skewX(-18deg)}
+
+/* A blur filter on a permanently spinning element forces a re-raster every
+   frame for a sub-pixel softening nobody can see. */
+.ai-orb{filter:none}
+
+/* Live-region flash stays as it is (one iteration, background-color) — it is
+   the one animation that carries information: "this number just changed". */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SIGNATURE MODE — the fifth theme, the showcase register
+   ───────────────────────────────────────────────────────────────────────────
+   Allowed to be richer than the other four, but it earns that with DEPTH, not
+   noise: a deeper graphite canvas, a genuine elevation ladder, warmer glass,
+   and a molten hairline on the surfaces that matter. What it deliberately does
+   NOT do is the thing that would make it read as crypto, gaming or sci-fi —
+   no neon, no saturated glows on everything, no scanlines, no hex grids, no
+   competing accent colours. One accent, spent where the plant is hot.
+
+   Every token in the contract is declared here, exactly like the other four,
+   so nothing falls back to another theme. Motion stays on the same budget:
+   composited properties only, and the low-power rules still win when set.
+   ═══════════════════════════════════════════════════════════════════════════ */
+body[data-theme="signature"]{
+  --bg:#080B11; --bg2:#0D1219;
+  --surface:rgba(22,29,39,.66);          /* warmer, deeper glass than dark */
+  --surface-solid:#141B25;
+  --elev-1:#0D1219; --elev-2:#151C26; --elev-3:#1E2733;
+  --line:rgba(163,186,214,.17); --line-soft:rgba(163,186,214,.085);
+  --tx:#EEF3F9; --tx2:#93A2B5;
+  --glassblur:22px;
+  --scrim:rgba(3,6,11,.66);
+  --focus-ring:rgba(255,138,61,.6);
+  --sh-1:0 1px 2px rgba(0,0,0,.4);
+  --sh-2:0 6px 20px rgba(0,0,0,.46);
+  --sh-3:0 24px 56px rgba(0,0,0,.6);
+  background:
+    radial-gradient(128% 78% at 78% -8%, rgba(124,77,255,.10), transparent 60%),
+    radial-gradient(108% 70% at 6% 104%, rgba(255,138,61,.09), transparent 62%),
+    linear-gradient(178deg, #0A0E15 0%, #080B11 52%, #070A0F 100%);
+  background-attachment:fixed;
+}
+
+/* Panels get a touch more presence and a lit top edge — the same idea as the
+   molten seam, applied as craft rather than decoration. */
+body[data-theme="signature"] .glass{
+  border-color:var(--line);
+  box-shadow:var(--sh-2), inset 0 1px 0 rgba(255,255,255,.045);
+}
+body[data-theme="signature"] .card.glass:hover,
+body[data-theme="signature"] .kpi.glass:hover{
+  border-color:rgba(255,138,61,.30);
+}
+/* KPI values carry the showcase weight, still flat and still contrast-checked. */
+body[data-theme="signature"] .kpi b{letter-spacing:-.02em}
+body[data-theme="signature"] .statusbar{
+  background:linear-gradient(180deg, var(--elev-2), var(--elev-1));
+}
+/* The rail reads as a machined console strip. */
+body[data-theme="signature"] .rail{
+  background:linear-gradient(180deg, #0E141C 0%, #0A0F16 100%);
+  border-right-color:var(--line);
+}
+/* The Gantt hero is the centrepiece of the dashboard in this mode. */
+body[data-theme="signature"] .sg-hero{
+  box-shadow:var(--sh-3), inset 0 1px 0 rgba(255,255,255,.05);
+}
+/* Login stage: a deeper field for the molten route to sit against. */
+body[data-theme="signature"] .lg-stage{
+  background:
+    radial-gradient(120% 92% at 10% 6%, rgba(255,138,61,.13), transparent 58%),
+    radial-gradient(90% 70% at 92% 96%, rgba(124,77,255,.10), transparent 60%),
+    linear-gradient(162deg, #0E141C 0%, #080B11 64%);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THE LOGIN SHOWCASE
+   ───────────────────────────────────────────────────────────────────────────
+   Design thesis: the PLANT is the hero. The left stage renders the signature
+   construct of SMS-2 — the heat lifecycle — as a real route carrying the real
+   temperatures of the process. It speaks the language of the product rather
+   than stock decoration, which is exactly why it cannot read as a generic
+   admin login, a crypto landing page or a sci-fi console.
+
+   Boldness is spent in ONE place: the molten node travelling the route.
+   Everything around it stays quiet — restrained type, one accent, generous
+   space. The entire motion budget is a single transform on a single element.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+#login-view.lg{
+  display:grid; grid-template-columns:1.05fr .95fr;
+  min-height:100vh; min-height:100dvh;
+  gap:0; padding:0; align-items:stretch;
+}
+
+/* ── The stage (left) ───────────────────────────────────────────────────── */
+.lg-stage{
+  position:relative; display:flex; flex-direction:column; justify-content:center;
+  gap:var(--sp-7); padding:var(--sp-7) clamp(28px,5vw,84px);
+  overflow:hidden;
+  background:
+    radial-gradient(120% 90% at 12% 8%, rgba(255,138,61,.10), transparent 58%),
+    linear-gradient(160deg, var(--elev-1) 0%, var(--bg) 62%);
+  border-right:var(--seam) solid var(--line);
+}
+/* A single hairline of molten light along the top edge — the signature. */
+.lg-stage::before{
+  content:""; position:absolute; inset:0 0 auto 0; height:2px;
+  background:linear-gradient(90deg,transparent,var(--accent) 22%,#FF3D6E 55%,transparent);
+  opacity:.7;
+}
+
+.lg-mark{display:flex; align-items:center; gap:var(--sp-4)}
+.lg-dot{
+  width:44px; height:44px; border-radius:50%; flex:0 0 44px;
+  background:radial-gradient(circle at 36% 32%, #FFD9A8, var(--accent) 52%, #C24E12 100%);
+  box-shadow:0 0 0 1px rgba(255,138,61,.35), 0 0 34px rgba(255,138,61,.32);
+}
+.lg-word h1{
+  margin:0; font-size:clamp(30px,3.4vw,44px); font-weight:700;
+  letter-spacing:-.03em; line-height:1; color:var(--tx);
+}
+.lg-word h1 em{font-style:normal; color:var(--accent)}
+.lg-word p{
+  margin:var(--sp-2) 0 0; color:var(--tx2);
+  font-size:var(--fs-small); letter-spacing:.16em; text-transform:uppercase;
+}
+
+/* ── The route: the heat lifecycle, drawn the way the plant runs it ─────── */
+.lg-route{position:relative; container-type:inline-size}
+.lg-line{
+  position:relative; height:2px; border-radius:2px;
+  background:linear-gradient(90deg,
+    #FF9A3D 0%, #FFC53D 14%, #FF8A5C 30%, #B44DFF 46%,
+    #7C4DFF 60%, #22E3A2 76%, #8FE3C8 90%, var(--line) 100%);
+  opacity:.55;
+}
+/* The one bold element: molten metal moving along the route. */
+.lg-node{
+  position:absolute; top:50%; left:0; width:12px; height:12px; margin-top:-6px;
+  border-radius:50%; background:#FFD9A8;
+  box-shadow:0 0 0 4px rgba(255,138,61,.22), 0 0 22px 6px rgba(255,138,61,.55);
+  animation:lg-travel 19s var(--ease) infinite;
+  will-change:transform;
+}
+@keyframes lg-travel{
+  0%   {transform:translateX(0) scale(.85); opacity:0}
+  6%   {opacity:1}
+  92%  {opacity:1}
+  100% {transform:translateX(100cqw) scale(.7); opacity:0}
+}
+/* Browsers without container query units still get the travel, sized to the
+   left column instead of the container. */
+@supports not (width:1cqw){
+  @keyframes lg-travel{
+    0%{transform:translateX(0) scale(.85); opacity:0}
+    6%{opacity:1} 92%{opacity:1}
+    100%{transform:translateX(46vw) scale(.7); opacity:0}
+  }
+}
+
+.lg-stages{
+  list-style:none; margin:var(--sp-4) 0 0; padding:0;
+  display:grid; grid-template-columns:repeat(8,1fr); gap:var(--sp-2);
+}
+.lg-stages li{display:flex; flex-direction:column; gap:2px; min-width:0}
+.lg-stages b{
+  font-size:var(--fs-micro); font-weight:700; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--tx2); white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis;
+}
+.lg-stages span{
+  font-family:var(--mono); font-size:var(--fs-small);
+  font-variant-numeric:tabular-nums; color:var(--tx); opacity:.85;
+}
+.lg-motto{margin:0; color:var(--tx2); font-size:var(--fs-small); letter-spacing:.04em}
+
+/* ── The panel (right) ──────────────────────────────────────────────────── */
+.lg-panel{
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:var(--sp-5); padding:var(--sp-6) clamp(20px,4vw,56px);
+  background:var(--bg);
+}
+.lg-card{
+  width:min(410px,100%); padding:var(--sp-6);
+  display:flex; flex-direction:column; gap:var(--sp-3);
+  box-shadow:var(--sh-3);
+}
+.lg-card-head h2{margin:0; font-size:var(--fs-2xl); letter-spacing:-.02em; color:var(--tx)}
+.lg-card-head p{margin:var(--sp-1) 0 0; color:var(--tx2); font-size:var(--fs-small)}
+.lg-card .fld{margin:0}
+
+/* The button: weight, a real press, and an arrow that leans in on hover. */
+.lg-go{
+  position:relative; display:inline-flex; align-items:center; justify-content:center;
+  gap:var(--sp-2); width:100%; min-height:46px; margin-top:var(--sp-1);
+  font-size:var(--fs-base); font-weight:700; letter-spacing:.01em;
+}
+.lg-arrow{font-style:normal; transition:transform var(--dur) var(--ease); will-change:transform}
+.lg-go:hover .lg-arrow{transform:translateX(3px)}
+.lg-go:active{transform:translateY(1px)}
+
+.lg-links{display:flex; align-items:center; justify-content:center; gap:var(--sp-2); flex-wrap:wrap}
+.lg-sep{color:var(--tx2); opacity:.6}
+.lg-links .linkbtn{padding:var(--sp-1) var(--sp-2)}
+
+.lg-status{
+  display:flex; align-items:center; gap:var(--sp-2);
+  font-family:var(--mono); font-size:var(--fs-small); color:var(--tx2);
+  padding-top:var(--sp-3); border-top:var(--seam) solid var(--line-soft);
+}
+.lg-live{
+  width:7px; height:7px; border-radius:50%; background:var(--ok); flex:0 0 7px;
+  box-shadow:0 0 8px rgba(55,194,160,.7);
+  animation:pulse 2.4s var(--ease) infinite;   /* opacity-only, composited */
+}
+.lg-foot{width:min(410px,100%)}
+
+/* ── Responsive: the stage stacks above the card and stays legible ──────── */
+@media (max-width:1024px){
+  #login-view.lg{grid-template-columns:1fr; min-height:auto}
+  .lg-stage{
+    gap:var(--sp-5); padding:var(--sp-6) clamp(20px,5vw,44px) var(--sp-5);
+    border-right:none; border-bottom:var(--seam) solid var(--line);
+  }
+  .lg-panel{padding:var(--sp-5) clamp(18px,5vw,44px) var(--sp-6)}
+  .lg-motto{display:none}
+}
+@media (max-width:640px){
+  .lg-stages{grid-template-columns:repeat(4,1fr); row-gap:var(--sp-3)}
+  .lg-word h1{font-size:28px}
+  .lg-dot{width:36px; height:36px; flex-basis:36px}
+  .lg-card{padding:var(--sp-5)}
+}
+@media (max-width:380px){ .lg-stages{grid-template-columns:repeat(2,1fr)} }
+/* Short landscape phones: the card must never push its button off screen. */
+@media (max-height:520px) and (orientation:landscape){
+  #login-view.lg{grid-template-columns:1fr 1fr; min-height:auto}
+  .lg-route, .lg-motto{display:none}
+  .lg-stage{padding:var(--sp-4)}
+  .lg-panel{padding:var(--sp-4)}
+}
+
+/* ═══ COPYRIGHT — one component, used on login, About and Settings ═══════ */
+.copyright{text-align:center; color:var(--tx2); font-size:var(--fs-small); line-height:var(--lh-base)}
+.copyright .cr-product{margin-bottom:var(--sp-2)}
+.copyright .cr-product b{
+  display:block; color:var(--tx); font-size:var(--fs-body);
+  letter-spacing:.08em; text-transform:uppercase;
+}
+.copyright .cr-product span{display:block; font-size:var(--fs-small); opacity:.85}
+.copyright .cr-line{font-size:var(--fs-small)}
+.copyright .cr-line b{color:var(--tx); font-weight:650}
+.copyright .cr-legal{margin-top:var(--sp-1); opacity:.72; font-size:var(--fs-micro)}
+.copyright.compact{padding-top:var(--sp-2); opacity:.9}
+.copyright.inset{
+  margin-top:var(--sp-5); padding-top:var(--sp-4);
+  border-top:var(--seam) solid var(--line-soft);
+}
+
+/* Contact-administrator dialog rows */
+.ca-grid{display:grid; gap:var(--sp-2); margin-top:var(--sp-2)}
+.ca-row{
+  display:flex; justify-content:space-between; gap:var(--sp-3); flex-wrap:wrap;
+  padding:var(--sp-2) var(--sp-3); border-radius:var(--radius-s);
+  background:var(--elev-1); border:var(--seam) solid var(--line-soft);
+}
+.ca-row span{color:var(--tx2); font-size:var(--fs-small)}
+.ca-row b{font-size:var(--fs-small); color:var(--tx)}
+
+/* ═══ CONTENT PROTECTION (paired with installContentProtection in app.js) ═══
+   Selection is suppressed across the interface, but NEVER on the surfaces an
+   operator or administrator must be able to work with: form fields, the
+   issued-credentials box and the ledger. Text stays fully readable and the
+   accessibility tree is untouched — this blocks casual copying, nothing more. */
+body{
+  -webkit-user-select:none; -moz-user-select:none; -ms-user-select:none; user-select:none;
+  -webkit-touch-callout:none;
+}
+input, textarea, select, [contenteditable="true"], .cred-box, .cred-file, .selectable{
+  -webkit-user-select:text; -moz-user-select:text; -ms-user-select:text; user-select:text;
+  -webkit-touch-callout:default;
+}
+img, svg, a{-webkit-user-drag:none}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NOTIFICATION CENTRE — the dedicated page
+   ───────────────────────────────────────────────────────────────────────────
+   Four categories ordered by urgency. Colour is a SECOND signal here, never
+   the only one: each category also carries a text badge and a distinct left
+   rail weight, so the page still reads correctly for a colour-blind operator
+   and in pure black mode. That is the same rule the Gantt legend follows.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.nc-cats{
+  display:grid; grid-template-columns:repeat(5,1fr);
+  gap:var(--sp-2); margin:var(--sp-4) 0 var(--sp-2);
+}
+.nc-cat{
+  display:flex; flex-direction:column; align-items:flex-start; gap:2px;
+  padding:var(--sp-3) var(--sp-4); min-height:64px;
+  border:var(--seam) solid var(--line); border-radius:var(--radius);
+  background:var(--elev-2); color:var(--tx); cursor:pointer; text-align:left;
+  transition:border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.nc-cat:hover{border-color:var(--tx2)}
+.nc-cat:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.nc-label{
+  font-size:var(--fs-micro); font-weight:700; letter-spacing:var(--ls-label);
+  text-transform:uppercase; color:var(--tx2);
+}
+.nc-count{
+  font-family:var(--mono); font-variant-numeric:tabular-nums;
+  font-size:var(--fs-xl); line-height:1.1; color:var(--tx);
+}
+.nc-unread{
+  font-size:var(--fs-micro); font-weight:700; color:var(--accent-tx);
+  letter-spacing:.04em;
+}
+/* Selected category: a lit edge, consistent with the rail and stage tabs. */
+.nc-cat.on{background:var(--elev-3); border-color:var(--accent)}
+.nc-cat.on .nc-label{color:var(--tx)}
+/* Per-category identity — the selected state borrows the category colour. */
+.nc-cat.emergency.on{border-color:var(--err)}
+.nc-cat.approval.on {border-color:var(--info)}
+.nc-cat.alert.on    {border-color:var(--warn)}
+.nc-cat.updates.on  {border-color:var(--ok)}
+
+/* ── Items ─────────────────────────────────────────────────────────────── */
+#np-list{display:grid; gap:var(--sp-2)}
+.nc-item{
+  position:relative; display:flex; align-items:flex-start; gap:var(--sp-3);
+  padding:var(--sp-3) var(--sp-4) var(--sp-3) var(--sp-5);
+  border:var(--seam) solid var(--line); border-radius:var(--radius);
+  background:var(--elev-2); overflow:hidden;
+}
+/* The left rail is the category signal that survives greyscale. */
+.nc-rail{position:absolute; inset:0 auto 0 0; width:3px; background:var(--line)}
+.nc-item.emergency .nc-rail{width:4px; background:var(--err)}
+.nc-item.approval  .nc-rail{background:var(--info)}
+.nc-item.alert     .nc-rail{background:var(--warn)}
+.nc-item.updates   .nc-rail{background:var(--ok)}
+.nc-item.unread{background:var(--elev-3); border-color:var(--line)}
+.nc-item.unread .nc-title{font-weight:700}
+
+.nc-body{flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:var(--sp-1)}
+.nc-top{display:flex; align-items:center; gap:var(--sp-2); flex-wrap:wrap}
+.nc-title{font-size:var(--fs-base); color:var(--tx); overflow-wrap:anywhere}
+.nc-badge{
+  font-size:var(--fs-micro); font-weight:700; letter-spacing:.08em;
+  text-transform:uppercase; padding:2px var(--sp-2);
+  border-radius:var(--radius-pill); border:var(--seam) solid var(--line);
+  color:var(--tx2); white-space:nowrap;
+}
+.nc-badge.emergency{color:var(--err); border-color:var(--err); background:var(--err-soft)}
+.nc-badge.approval {color:var(--info); border-color:var(--info); background:var(--info-soft)}
+.nc-badge.alert    {color:var(--warn); border-color:var(--warn); background:var(--warn-soft)}
+.nc-badge.updates  {color:var(--ok);   border-color:var(--ok);   background:var(--ok-soft)}
+.nc-dot{
+  width:8px; height:8px; border-radius:50%; background:var(--accent);
+  flex:0 0 8px; box-shadow:0 0 8px var(--accent-soft);
+}
+.nc-text{
+  margin:0; font-size:var(--fs-small); color:var(--tx2);
+  line-height:var(--lh-base); overflow-wrap:anywhere;
+}
+.nc-meta{
+  display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap;
+  font-size:var(--fs-micro); color:var(--tx2);
+}
+.nc-meta time{font-family:var(--mono); font-variant-numeric:tabular-nums}
+.nc-kind{
+  text-transform:uppercase; letter-spacing:.08em; opacity:.8;
+}
+.nc-read{flex:0 0 auto; align-self:center}
+
+/* ── Responsive: categories reflow, items never clip ───────────────────── */
+@media (max-width:1024px){
+  .nc-cats{grid-template-columns:repeat(3,1fr)}
+}
+@media (max-width:720px){
+  .nc-cats{grid-template-columns:repeat(2,1fr)}
+  .nc-item{flex-direction:column; align-items:stretch; padding-left:var(--sp-4)}
+  .nc-read{align-self:flex-start}
+}
+@media (max-width:400px){
+  .nc-cats{grid-template-columns:1fr 1fr}
+  .nc-cat{min-height:56px; padding:var(--sp-2) var(--sp-3)}
+  .nc-count{font-size:var(--fs-lg)}
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHASE 9 FINDING · STATE COLOURS ON PAPER
+   ───────────────────────────────────────────────────────────────────────────
+   The status palette (--ok, --warn, --err, --info, plus the machine-state
+   cyan and orange) was chosen against dark surfaces. Measured on the white
+   theme it collapses:
+
+       .tag.done            1.28:1     green  #37C2A0 on near-white
+       .mb-state.READY      1.65:1     cyan   #00D4FF
+       .mb-state.RUNNING    2.09:1
+       .tag.open/.running   4.36:1     amber
+
+   These chips carry LIVE PRODUCTION STATE — RUNNING, READY, done. A shift
+   engineer on the paper theme could barely read them. Same remedy already
+   used for the accent: the saturated hue stays for FILLS and borders, while
+   TEXT switches to a darkened twin that holds 4.5:1 on paper.
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* (state-text tokens merged into the single :root at the top of the file) */
+body[data-theme="light"]{
+  --ok-tx:#0B6B4F;
+  --warn-tx:#7A5300;
+  --err-tx:#B3161B;
+  --info-tx:#1F5E8C;
+  --state-ready-tx:#06657D;
+  --state-maint-tx:#8A4A00;
+}
+
+/* Status chips: text uses the readable twin in every theme. */
+.tag.done, .tag.locked, .tag.approved, .tag.accepted{color:var(--ok-tx)}
+.tag.error, .tag.rejected, .tag.aborted{color:var(--err-tx)}
+.tag.warn, .tag.hold, .tag.train{color:var(--warn-tx)}
+.tag.active{color:var(--ok-tx)}
+.tag.disabled, .tag.archived{color:var(--err-tx)}
+
+/* Machine status board — the same law, including the two hardcoded hues. */
+.tag.RUNNING{color:var(--ok-tx)}
+.tag.DELAYED{color:var(--warn-tx)}
+.tag.OFFLINE{color:var(--err-tx)}
+.tag.READY{color:var(--state-ready-tx); border-color:var(--state-ready)}
+.tag.MAINTENANCE{color:var(--state-maint-tx); border-color:var(--state-maint)}
+
+/* Findings and inline status text inherit the same readable twins. */
+.finding.ok > b{color:var(--ok-tx)}
+.ok-tx{color:var(--ok-tx)}
+td.cell-bad, .cell-bad{color:var(--err-tx)}
+
+/* On paper the translucent chip fill is too faint to separate the chip from
+   the card, so light mode gets a slightly firmer wash and a real border. */
+body[data-theme="light"] .tag{border-color:var(--line)}
+body[data-theme="light"] .tag.done,
+body[data-theme="light"] .tag.locked,
+body[data-theme="light"] .tag.approved,
+body[data-theme="light"] .tag.accepted,
+body[data-theme="light"] .tag.active,
+body[data-theme="light"] .tag.RUNNING{background:rgba(11,107,79,.09); border-color:rgba(11,107,79,.34)}
+body[data-theme="light"] .tag.error,
+body[data-theme="light"] .tag.rejected,
+body[data-theme="light"] .tag.aborted,
+body[data-theme="light"] .tag.disabled,
+body[data-theme="light"] .tag.archived,
+body[data-theme="light"] .tag.OFFLINE{background:rgba(179,22,27,.08); border-color:rgba(179,22,27,.32)}
+body[data-theme="light"] .tag.warn,
+body[data-theme="light"] .tag.hold,
+body[data-theme="light"] .tag.train,
+body[data-theme="light"] .tag.DELAYED{background:rgba(122,83,0,.09); border-color:rgba(122,83,0,.32)}
+body[data-theme="light"] .tag.READY{background:rgba(6,101,125,.08)}
+body[data-theme="light"] .tag.MAINTENANCE{background:rgba(138,74,0,.08)}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GANTT EVENT MARKERS — differentiated by SHAPE, not colour alone
+   ───────────────────────────────────────────────────────────────────────────
+   Every event on the Gantt used to be the same 11px glowing diamond in a
+   different colour, so the lane read as a scatter of coloured dots and the
+   route decision — the single most consequential moment in a heat's life —
+   looked like a stray blue speck.
+
+   Each kind now has its own SILHOUETTE, which also means the Gantt survives
+   greyscale, pure-black mode and a colour-blind operator:
+
+     route decision   a SWITCH marker — a vertical line through the lane with
+                      a chevron, the points/switch symbol from the railway the
+                      metaphor actually comes from: the heat's path forks here
+     approval / lock  a solid shield-ish diamond (unchanged silhouette)
+     validation       a triangle — the universal caution shape
+     abort / unlock   a cross
+
+   Colour is retained as a second channel, and the route hue moves off the
+   cyan that read as "random blue dot" onto a steel-violet that belongs to
+   nothing else in the palette.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Reset the shared diamond so each kind can own its shape. */
+.sg-ev{
+  position:absolute; z-index:6; cursor:help;
+  transform:translate(-50%,-50%); top:50%;
+  width:11px; height:11px; border-radius:2.5px;
+  border:1.5px solid rgba(255,255,255,.55);
+  box-shadow:none;                       /* the glow was noise, not signal */
+}
+
+/* ── ROUTE DECISION · the switch marker ──────────────────────────────────
+   Spans the lane instead of floating in it, because the decision applies to
+   the whole heat, not to one instant in one bar. */
+.sg-ev.k-route_selected{
+  top:0; bottom:0; height:auto;
+  width:0; border:none; border-radius:0;
+  transform:translateX(-50%);
+  background:none; box-shadow:none;
+  z-index:7;                      /* above every bar, below only the NOW line */
+}
+/* The stem: full lane height, with a dark casing so it stays legible when it
+   crosses a bright EAF or caster bar. A 2px hairline vanished against them. */
+.sg-ev.k-route_selected::before{
+  content:""; position:absolute; top:11px; bottom:1px; left:-1.5px;
+  width:3px; border-radius:2px;
+  background:var(--st-event-route);
+  box-shadow:0 0 0 1px rgba(0,0,0,.55), 0 0 9px rgba(167,139,250,.55);
+}
+/* The flag: a solid pennant at the top of the lane. This is what the eye
+   actually catches when scanning a dense chart — the stem alone reads as a
+   gridline, the flag reads as a decision. Sits above the bars, never inside. */
+.sg-ev.k-route_selected::after{
+  content:""; position:absolute; top:0; left:0;
+  width:0; height:0; margin-left:-8px;
+  border-left:8px solid transparent;
+  border-right:8px solid transparent;
+  border-top:13px solid var(--st-event-route);
+}
+/* Light theme: the track is pale, so the casing inverts to keep the edge. */
+body[data-theme="light"] .sg-ev.k-route_selected::before{
+  box-shadow:0 0 0 1px rgba(255,255,255,.8), 0 0 8px rgba(109,40,217,.35);
+}
+
+/* ── APPROVAL / LOCK · solid diamond ─────────────────────────────────── */
+.sg-ev.k-approval, .sg-ev.k-locked{
+  background:var(--ok);
+  transform:translate(-50%,-50%) rotate(45deg);
+}
+
+/* ── VALIDATION / CORRECTION · caution triangle ──────────────────────── */
+.sg-ev.k-validation{
+  background:var(--warn);
+  border:none; border-radius:1px;
+  clip-path:polygon(50% 0%, 100% 100%, 0% 100%);
+  width:12px; height:11px;
+}
+
+/* ── ABORT / UNLOCK · cross ──────────────────────────────────────────── */
+.sg-ev.k-aborted, .sg-ev.k-unlocked{
+  background:var(--err);
+  border:none; border-radius:1px;
+  clip-path:polygon(20% 0%,50% 30%,80% 0%,100% 20%,70% 50%,100% 80%,
+                    80% 100%,50% 70%,20% 100%,0% 80%,30% 50%,0% 20%);
+  width:12px; height:12px;
+}
+/* No clip-path (older intranet browsers): fall back to the plain diamond
+   rather than a full-bleed square. */
+@supports not (clip-path:polygon(0 0, 100% 0, 50% 100%)){
+  .sg-ev.k-validation, .sg-ev.k-aborted, .sg-ev.k-unlocked{
+    clip-path:none; border-radius:2.5px;
+    transform:translate(-50%,-50%) rotate(45deg);
+  }
+}
+
+/* Hover: lift the marker without the permanent glow. */
+.sg-ev:hover{filter:brightness(1.25)}
+.sg-ev.k-route_selected:hover::before{width:5px; left:-2.5px}
+
+/* ── LEGEND · the swatches now mirror the real silhouettes ───────────── */
+.sg-legend i[data-sw="route"]{
+  background:none; width:12px; height:11px; position:relative;
+  /* Reset the 45° rotation the earlier diamond rule applies to all three
+     event swatches — a switch marker is upright, not tilted. */
+  transform:none; border-radius:0;
+}
+.sg-legend i[data-sw="route"]::before{
+  content:""; position:absolute; left:4px; top:0; bottom:0; width:2px;
+  background:var(--st-event-route); border-radius:2px;
+}
+.sg-legend i[data-sw="route"]::after{
+  content:""; position:absolute; top:0; left:1px;
+  width:0; height:0;
+  border-left:5px solid transparent;
+  border-right:5px solid transparent;
+  border-top:7px solid var(--st-event-route);
+}
+.sg-legend i[data-sw="approval"]{
+  background:var(--ok); width:9px; height:9px;
+  border-radius:2px; transform:rotate(45deg);
+}
+.sg-legend i[data-sw="validation"]{
+  background:var(--warn); width:11px; height:10px;
+  border-radius:1px; transform:none;
+  clip-path:polygon(50% 0%, 100% 100%, 0% 100%);
+}

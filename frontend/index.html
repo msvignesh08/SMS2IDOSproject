@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SMS-2 IDOS — Digital Command Center</title>
+<link rel="stylesheet" href="/static/app.css?v87-202607201800">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='%23FF8A3D'/><circle cx='50' cy='50' r='22' fill='%2310151D'/></svg>">
+</head>
+<body data-theme="dark">
+
+<!-- ══ LOGIN — THE SHOWCASE ═══════════════════════════════════════════════
+     Thesis: the plant itself is the hero, not an ornament bolted behind a
+     form. The left stage renders SMS-2's own signature construct — the heat
+     lifecycle — as a real route: Hot Metal → EAF → ZPF → LRF → VD → Caster →
+     Quality → Review, carrying the actual temperatures of the process
+     (1350°C charge, 1655°C tap, cooling to billet). A single molten node
+     travels it. That is the product's language, not stock decoration, and it
+     is the reason this cannot be mistaken for a generic admin login.
+     One transform animation drives the whole thing. ══════════════════════ -->
+<div id="login-view" class="lg hidden">
+  <div class="lg-stage" aria-hidden="true">
+    <div class="lg-mark">
+      <span class="lg-dot"></span>
+      <div class="lg-word">
+        <h1>SMS&#8209;2 <em>IDOS</em></h1>
+        <p>Steel Plant Digital MES System</p>
+      </div>
+    </div>
+
+    <div class="lg-route">
+      <div class="lg-line"><i class="lg-node"></i></div>
+      <ol class="lg-stages">
+        <li><b>Hot Metal</b><span>1350&#8202;°C</span></li>
+        <li><b>EAF</b><span>1655&#8202;°C</span></li>
+        <li><b>ZPF</b><span>de&#8209;P</span></li>
+        <li><b>LRF</b><span>refine</span></li>
+        <li><b>VD</b><span>vacuum</span></li>
+        <li><b>Caster</b><span>billet</span></li>
+        <li><b>Quality</b><span>verify</span></li>
+        <li><b>Review</b><span>lock</span></li>
+      </ol>
+    </div>
+
+    <p class="lg-motto">People First. Production Always. Knowledge Forever.</p>
+  </div>
+
+  <div class="lg-panel">
+    <div class="lg-card glass">
+      <div class="lg-card-head">
+        <h2>Sign in</h2>
+        <p>Authorised plant personnel only.</p>
+      </div>
+
+      <label class="fld"><span>Employee ID</span>
+        <input id="login-emp" autocomplete="username" placeholder="e.g. SE001" autofocus></label>
+      <label class="fld"><span>Password</span>
+        <input id="login-pw" type="password" autocomplete="current-password" placeholder="••••••••"></label>
+
+      <button class="btn primary wide lg-go" id="login-btn">
+        <span>Sign in</span><i class="lg-arrow" aria-hidden="true">→</i>
+      </button>
+
+      <div class="login-err" id="login-err" role="alert" aria-live="polite"></div>
+
+      <div class="lg-links">
+        <button class="linkbtn" id="forgot-btn">Forgot password?</button>
+        <span class="lg-sep" aria-hidden="true">·</span>
+        <button class="linkbtn" id="contact-admin-btn">Contact administrator</button>
+      </div>
+
+      <div class="lg-status"><i class="lg-live" aria-hidden="true"></i><span id="login-plant"></span></div>
+
+      <div class="login-demo">Demo — Operator <b>OP001</b> · Shift Engineer <b>SE001</b> · Shift Incharge <b>SI001</b> · Quality <b>QE001</b> (<code>steel@123</code>) · Admin <b>ADMIN</b> (<code>admin@123</code>)</div>
+    </div>
+
+    <div class="lg-foot" id="login-copyright"></div>
+  </div>
+</div>
+
+<!-- APP SHELL -->
+<div id="app" class="app hidden">
+  <nav class="rail">
+    <div class="rail-logo" title="SMS-2 IDOS"><div class="melt-dot small"></div></div>
+    <a href="#/dashboard" data-nav="dashboard" data-tier="primary" title="Digital Command Center">◧<span>Command</span></a>
+    <a href="#/entry" data-nav="entry" data-tier="primary" title="Production Entry">✎<span>Entry</span></a>
+    <a href="#/heats" data-nav="heats" data-tier="primary" title="Heat Tracking &amp; Timelines">⛓<span>Heats</span></a>
+    <a href="#/reports" data-nav="reports" data-tier="primary" title="Reports &amp; Analytics Center">▤<span>Reports</span></a>
+    <a href="#/search" data-nav="search" data-tier="secondary" title="Universal Search">⌕<span>Search</span></a>
+    <a href="#/calculator" data-nav="calculator" data-tier="secondary" title="Metallurgical Calculator">∑<span>Calc</span></a>
+    <a href="#/ai" data-nav="ai" data-tier="secondary" title="AI Production Engineer">◈<span>AI</span></a>
+    <a href="#/knowledge" data-nav="knowledge" data-tier="secondary" title="Organizational Memory">✦<span>Memory</span></a>
+    <a href="#/admin" data-nav="admin" data-tier="secondary" title="Administration" id="nav-admin">⚙<span>Admin</span></a>
+    <!-- Phones only: 5th slot opens the rest (bottom-nav-limit = 5). -->
+    <button class="rail-more" id="rail-more" aria-haspopup="true" aria-expanded="false"
+            aria-controls="more-sheet" title="More">⋯<span>More</span></button>
+    <div class="rail-spacer"></div>
+    <button class="rail-btn" id="theme-btn" title="Theme: dark / pure black / white / low power / signature">◐</button>
+    <button class="rail-btn" id="logout-btn" title="Sign out">⏻</button>
+  </nav>
+
+  <div class="main">
+    <header class="statusbar glass">
+      <div class="sb-plant">
+        <div class="sb-day"><label>Plant Day</label><b id="sb-day">—</b></div>
+        <div class="sb-shift"><label>Shift</label><b id="sb-shift">—</b></div>
+        <div class="sb-clock"><label>Plant Time</label><b id="sb-clock">—</b></div>
+      </div>
+      <div class="sb-title" id="sb-title">Digital Command Center</div>
+      <div class="sb-user">
+        <button class="bell" id="bell-btn" title="Notifications">🔔<i id="bell-count" class="hidden"></i></button>
+        <div class="sb-who"><b id="sb-name">—</b><span id="sb-role">—</span></div>
+      </div>
+    </header>
+    <div id="training-banner" class="training-banner hidden"></div>
+    <main id="view"></main>
+  </div>
+</div>
+
+<!-- Notification drawer -->
+<div id="drawer" class="drawer glass hidden">
+  <div class="drawer-head"><b>Notifications</b><button class="x" onclick="UI.closeDrawer()">✕</button></div>
+  <div id="drawer-body"></div>
+</div>
+
+<!-- Phone overflow navigation: holds every secondary destination so the bottom
+     bar can stay at 5 items. Populated from the rail so the two can never
+     drift apart. Destructive actions sit in their own separated group. -->
+<div id="more-sheet" class="more-sheet hidden" role="dialog" aria-modal="true" aria-label="More destinations">
+  <div class="ms-panel">
+    <div class="ms-grip" aria-hidden="true"></div>
+    <div class="ms-head"><b>More</b><button class="x" id="ms-close" aria-label="Close">✕</button></div>
+    <nav class="ms-links" id="ms-links"></nav>
+    <div class="ms-utility" id="ms-utility"></div>
+  </div>
+</div>
+
+<!-- Modal host -->
+<div id="modal-root"></div>
+<div id="toast-root"></div>
+
+<script src="/static/app.js?v87-202607201800"></script>
+</body>
+</html>

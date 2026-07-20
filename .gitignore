@@ -1,0 +1,55 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  SMS-2 IDOS — files that must NEVER be committed
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── SECRETS ────────────────────────────────────────────────────────────────
+# credentials.txt is generated at runtime and holds ISSUED PASSWORDS in plain
+# text. The application itself marks it "CONFIDENTIAL — Administrator access
+# only". On a real plant deployment it contains genuine credentials, so it can
+# never be published. Never remove this line.
+credentials.txt
+
+.env
+.env.*
+*.key
+*.pem
+secrets.json
+
+# ── DATABASE ───────────────────────────────────────────────────────────────
+# Live production data plus every user's password hash. The database is
+# recreated automatically on first boot (masters and demo users are seeded),
+# so nothing is lost by excluding it.
+backend/data/*.db
+backend/data/*.db-shm
+backend/data/*.db-wal
+backend/data/*.sqlite
+backend/data/*.sqlite3
+
+# ── GENERATED ARTEFACTS ────────────────────────────────────────────────────
+# Archived reports and database backups are plant records, not source code.
+backend/data/backups/
+backend/data/reports/
+*.xlsx
+
+# ── PYTHON ─────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+
+# ── EDITOR / OS ────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── LOGS ───────────────────────────────────────────────────────────────────
+*.log

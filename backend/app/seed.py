@@ -1,0 +1,180 @@
+"""
+SMS-2 IDOS — MASTER DATA SEED
+Bootstraps roles, users, grades (with target chemistry), materials (with
+compositions & recoveries for the Calculation Engine), equipment, delay
+reason codebook and the heat number series. Idempotent — safe to re-run.
+"""
+from sqlalchemy.orm import Session
+from . import models as M
+from .core.security import hash_password
+
+PERMS_ALL = ["production.entry", "production.approve.l1", "production.approve.l2",
+             "production.approve.l3", "reports.view", "reports.export",
+             "search", "admin", "knowledge.write", "heats.create", "heats.abort"]
+
+ROLES = [
+    ("Owner", PERMS_ALL, True),
+    ("Super Administrator", PERMS_ALL, True),
+    ("Administrator", PERMS_ALL, True),
+    ("Shift Incharge", ["production.entry", "production.approve.l1", "production.approve.l3",
+                         "reports.view", "reports.export", "search", "knowledge.write",
+                         "heats.create", "heats.abort"], True),
+    ("Shift Engineer", ["production.entry", "production.approve.l1", "production.approve.l2",
+                         "reports.view", "reports.export", "search", "knowledge.write",
+                         "heats.create", "heats.abort"], True),
+    ("Operator", ["production.entry", "production.approve.l1", "reports.view", "search"], True),
+    ("Quality Engineer", ["production.entry", "reports.view", "reports.export", "search",
+                           "knowledge.write"], True),
+    ("Laboratory Technician", ["production.entry", "reports.view", "search"], True),
+    ("Production Manager", ["reports.view", "reports.export", "search", "knowledge.write"], True),
+    ("Plant Head", ["reports.view", "reports.export", "search"], True),
+    ("View Only", ["reports.view", "search"], True),
+]
+
+USERS = [  # employee_id, name, designation, department, role, password
+    ("OWNER", "Plant Owner", "Owner", "Management", "Owner", "owner@123"),
+    ("ADMIN", "System Administrator", "Administrator", "IT", "Administrator", "admin@123"),
+    ("SE001", "R. Sharma", "Shift Engineer", "SMS-2", "Shift Engineer", "steel@123"),
+    ("SI001", "K. Patnaik", "Shift Incharge", "SMS-2", "Shift Incharge", "steel@123"),
+    ("OP001", "M. Behera", "EAF Operator", "SMS-2", "Operator", "steel@123"),
+    ("QE001", "S. Mishra", "Quality Engineer", "Quality", "Quality Engineer", "steel@123"),
+    ("PM001", "A. Rao", "Production Manager", "SMS-2", "Production Manager", "steel@123"),
+    ("VIEW01", "Guest Viewer", "Observer", "Management", "View Only", "steel@123"),
+]
+
+GRADES = {  # code: {element: (min, aim, max)}
+    "Fe500D": {"C": (0.18, 0.22, 0.25), "Si": (0.15, 0.20, 0.30), "Mn": (0.60, 0.80, 1.00),
+               "S": (0.0, 0.020, 0.030), "P": (0.0, 0.025, 0.035), "Ti": (0.0, 0.0, 0.01)},
+    "Fe550D": {"C": (0.20, 0.24, 0.28), "Si": (0.15, 0.22, 0.30), "Mn": (0.80, 1.00, 1.20),
+               "S": (0.0, 0.018, 0.025), "P": (0.0, 0.022, 0.030), "Ti": (0.0, 0.0, 0.01)},
+    "SAE1018": {"C": (0.15, 0.18, 0.20), "Si": (0.10, 0.18, 0.30), "Mn": (0.60, 0.75, 0.90),
+                "S": (0.0, 0.020, 0.035), "P": (0.0, 0.020, 0.030)},
+    "SAE1541": {"C": (0.36, 0.40, 0.44), "Si": (0.15, 0.22, 0.30), "Mn": (1.35, 1.45, 1.65),
+                "S": (0.0, 0.020, 0.035), "P": (0.0, 0.020, 0.030)},
+    "EN8": {"C": (0.36, 0.40, 0.44), "Si": (0.10, 0.20, 0.40), "Mn": (0.60, 0.80, 1.00),
+            "S": (0.0, 0.030, 0.050), "P": (0.0, 0.030, 0.050)},
+    "20MnCr5": {"C": (0.17, 0.20, 0.22), "Si": (0.15, 0.25, 0.40), "Mn": (1.10, 1.25, 1.40),
+                "Cr": (1.00, 1.15, 1.30), "S": (0.0, 0.025, 0.035), "P": (0.0, 0.020, 0.025)},
+}
+
+MATERIALS = [
+    # code, name, category, unit, composition
+    ("HSC", "Heavy Scrap", "scrap", "t", {}),
+    ("LSC", "Light Scrap", "scrap", "t", {}),
+    ("ASC", "Alloy Scrap", "scrap", "t", {}),
+    ("SKL", "Return Skull", "scrap", "t", {}),
+    ("PIG", "Pig Iron", "scrap", "t", {}),
+    ("DRI", "DRI / HBI", "scrap", "t", {}),
+    ("LIME", "Lime", "flux", "kg", {}),
+    ("DOLO", "Dolomite", "flux", "kg", {}),
+    ("FLSP", "Fluorspar", "flux", "kg", {}),
+    ("CARB", "Carbon Injection", "flux", "kg", {"C": 98.0, "recovery": 85.0}),
+    ("COKE", "Coke Breeze", "flux", "kg", {"C": 85.0, "recovery": 75.0}),
+    ("SSLAG", "Synthetic Slag", "flux", "kg", {}),
+    ("FESI", "FeSi (75%)", "alloy", "kg", {"Si": 75.0, "C": 0.1, "recovery": 92.0}),
+    ("FEMNHC", "FeMn HC", "alloy", "kg", {"Mn": 70.0, "C": 7.0, "recovery": 93.0}),
+    ("FEMNLC", "FeMn LC", "alloy", "kg", {"Mn": 80.0, "C": 0.5, "recovery": 93.0}),
+    ("SIMN", "SiMn", "alloy", "kg", {"Mn": 62.0, "Si": 15.0, "C": 1.8, "recovery": 92.0}),
+    ("FECR", "FeCr HC", "alloy", "kg", {"Cr": 62.0, "C": 8.0, "recovery": 95.0}),
+    ("FECRLC", "FeCr LC", "alloy", "kg", {"Cr": 65.0, "C": 0.1, "recovery": 95.0}),
+    ("FEMO", "FeMo", "alloy", "kg", {"Mo": 60.0, "recovery": 98.0}),
+    ("FEV", "FeV", "alloy", "kg", {"V": 50.0, "recovery": 95.0}),
+    ("FETI", "FeTi", "alloy", "kg", {"Ti": 70.0, "recovery": 55.0}),
+    ("ALB", "Aluminium Bar", "alloy", "kg", {"Al": 97.0, "recovery": 60.0}),
+    ("NI", "Nickel Plate", "alloy", "kg", {"Ni": 99.0, "recovery": 98.0}),
+    ("CU", "Copper", "alloy", "kg", {"Cu": 99.0, "recovery": 98.0}),
+    ("CASI", "CaSi Wire", "wire", "m", {"Ca": 30.0, "Si": 60.0, "recovery": 12.0}),
+    ("CWC", "Carbon Cored Wire", "wire", "m", {"C": 98.0, "recovery": 80.0}),
+    ("CWS", "Sulphur Cored Wire", "wire", "m", {"S": 90.0, "recovery": 70.0}),
+    ("CWTI", "FeTi Cored Wire", "wire", "m", {"Ti": 70.0, "recovery": 60.0}),
+]
+
+EQUIPMENT = (
+    [("BF-1", "blast_furnace"), ("BF-2", "blast_furnace"),
+     ("EAF-1", "eaf"), ("ZPF-1", "zpf"), ("LRF-1", "lrf"), ("LRF-2", "lrf"),
+     ("LRF-5", "lrf"), ("LRF-6", "lrf"), ("LTC-1", "ltc"), ("LTC-2", "ltc"),
+     ("VD-2", "vd"), ("VD-3", "vd"), ("BC-2", "caster"), ("BC-3", "caster")]
+    + [(f"LD-{i:02d}", "ladle") for i in range(1, 16)]
+)
+
+DELAY_REASONS = [
+    ("Mechanical", "Roof/electrode arm fault", "Mechanical Maintenance"),
+    ("Mechanical", "Hydraulic system failure", "Mechanical Maintenance"),
+    ("Mechanical", "Water leakage — panels/mould", "Mechanical Maintenance"),
+    ("Electrical", "Transformer trip", "Electrical Maintenance"),
+    ("Electrical", "Power interruption / grid restriction", "Electrical Maintenance"),
+    ("Electrical", "Drive/VVFD fault", "Electrical Maintenance"),
+    ("Process", "High bath temperature — waiting", "Production"),
+    ("Process", "Chemistry adjustment / re-blow", "Production"),
+    ("Process", "Waiting for lab result", "Laboratory"),
+    ("Crane", "Crane not available", "Crane Services"),
+    ("Material", "Hot metal not available", "Blast Furnace"),
+    ("Material", "Scrap/alloy not available", "Raw Material Handling"),
+    ("Material", "Ladle not available", "Ladle Management"),
+    ("Utility", "Oxygen pressure low", "Utilities"),
+    ("Utility", "Argon/nitrogen not available", "Utilities"),
+    ("Quality", "Billet inspection hold", "Quality"),
+    ("Caster", "Tundish/SEN change", "Casting"),
+    ("Caster", "Strand breakout", "Casting"),
+    ("Other", "Shift change / administrative", "Production"),
+]
+
+
+def seed(db: Session):
+    for name, perms, sys in ROLES:
+        if not db.query(M.Role).filter_by(name=name).first():
+            db.add(M.Role(name=name, permissions=perms, is_system=sys,
+                          description=f"{name} — system role"))
+    db.flush()
+    roles = {r.name: r for r in db.query(M.Role)}
+
+    _issued = {}
+    for emp, name, desig, dept, role, pwd in USERS:
+        if not db.query(M.User).filter_by(employee_id=emp).first():
+            _issued[emp] = pwd
+            db.add(M.User(employee_id=emp, name=name, designation=desig,
+                          department=dept, role_id=roles[role].id,
+                          password_hash=hash_password(pwd)))
+    # User Management Law: the ledger exists from the first boot
+    if _issued:
+        try:
+            from .engines.credentials import rewrite
+            db.flush(); rewrite(db, _issued)
+        except Exception:
+            pass
+
+    if db.query(M.SteelGrade).count() == 0:
+        for code, specs in GRADES.items():
+            g = M.SteelGrade(code=code, name=code)
+            db.add(g); db.flush()
+            for el, (mn, aim, mx) in specs.items():
+                db.add(M.GradeSpec(grade_id=g.id, element=el,
+                                   min_pct=mn, aim_pct=aim, max_pct=mx))
+
+    if db.query(M.Material).count() == 0:
+        for code, name, cat, unit, comp in MATERIALS:
+            db.add(M.Material(code=code, name=name, category=cat,
+                              unit=unit, composition=comp))
+
+    for code, kind in EQUIPMENT:
+        if not db.query(M.Equipment).filter_by(code=code).first():
+            db.add(M.Equipment(code=code, kind=kind))
+
+    if db.query(M.DelayReason).count() == 0:
+        for cat, reason, dept in DELAY_REASONS:
+            db.add(M.DelayReason(category=cat, reason=reason, department=dept))
+
+    if db.query(M.HeatSeries).count() == 0:
+        db.add(M.HeatSeries(prefix="E", next_number=260151, pad=6))
+
+    defaults = {
+        "plant_name": "Steel Melting Shop — SMS-2",
+        "plant_day_start": "22:00",
+        "approval_chain": "Operator,Shift Engineer,Shift Incharge",
+        "maintenance_mode": "off",
+        "training_banner": "TRAINING MODE — records are excluded from production reports and organizational knowledge.",
+    }
+    for k, v in defaults.items():
+        if not db.get(M.SystemSetting, k):
+            db.add(M.SystemSetting(key=k, value=v, description=""))
+    db.commit()

@@ -1,0 +1,15 @@
+# systemd unit — copy to /etc/systemd/system/sms2-idos.service, then:
+#   systemctl daemon-reload && systemctl enable --now sms2-idos
+[Unit]
+Description=SMS-2 IDOS — Industrial Digital Operating System
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/sms2-idos/backend
+ExecStart=/usr/bin/python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8020
+Restart=always
+RestartSec=5
+# Environment=SMS2_DATABASE_URL=postgresql://sms2:PASSWORD@localhost/sms2
+
+[Install]
+WantedBy=multi-user.target
