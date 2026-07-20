@@ -20,10 +20,18 @@ from .core.security import hash_password
 #
 # They only apply when the database is first created. An existing database
 # keeps whatever passwords it already has — change those in Admin → Users.
-_ADMIN_PW = os.environ.get("SMS2_ADMIN_PASSWORD") or "admin@123"
-_USER_PW = os.environ.get("SMS2_SEED_PASSWORD") or "steel@123"
-# True when the defaults are still in force, i.e. nothing has been configured.
-SEED_PASSWORDS_ARE_DEFAULT = (_ADMIN_PW == "admin@123" and _USER_PW == "steel@123")
+_ADMIN_ENV = (os.environ.get("SMS2_ADMIN_PASSWORD") or "").strip()
+_USER_ENV = (os.environ.get("SMS2_SEED_PASSWORD") or "").strip()
+
+# OWNER and ADMIN keep their DISTINCT published defaults when nothing is
+# configured — collapsing them onto one value silently changed OWNER's
+# password and broke the login. When the variable is set, both use it.
+_OWNER_PW = _ADMIN_ENV or "owner@123"
+_ADMIN_PW = _ADMIN_ENV or "admin@123"
+_USER_PW = _USER_ENV or "steel@123"
+
+# True while nothing has been configured, i.e. the published defaults are live.
+SEED_PASSWORDS_ARE_DEFAULT = not (_ADMIN_ENV or _USER_ENV)
 
 PERMS_ALL = ["production.entry", "production.approve.l1", "production.approve.l2",
              "production.approve.l3", "reports.view", "reports.export",
@@ -49,7 +57,7 @@ ROLES = [
 ]
 
 USERS = [  # employee_id, name, designation, department, role, password
-    ("OWNER", "Plant Owner", "Owner", "Management", "Owner", _ADMIN_PW),
+    ("OWNER", "Plant Owner", "Owner", "Management", "Owner", _OWNER_PW),
     ("ADMIN", "System Administrator", "Administrator", "IT", "Administrator", _ADMIN_PW),
     ("SE001", "R. Sharma", "Shift Engineer", "SMS-2", "Shift Engineer", _USER_PW),
     ("SI001", "K. Patnaik", "Shift Incharge", "SMS-2", "Shift Incharge", _USER_PW),
