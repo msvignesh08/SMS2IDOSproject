@@ -254,13 +254,17 @@ main#view{padding:18px 22px 60px; max-width:1500px; width:100%; margin:0 auto}
 .sb-plant{display:flex; gap:22px}
 .sb-plant label{display:block; font-size:9.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--tx2)}
 .sb-plant b{font-family:var(--mono); font-size:17px; font-variant-numeric:tabular-nums}
-.sb-shift b{color:var(--accent)}
+.sb-shift b{color:var(--accent-tx)}
 .sb-title{flex:1; text-align:center; font-size:13px; letter-spacing:2.2px; text-transform:uppercase; color:var(--tx2)}
 .sb-user{display:flex; align-items:center; gap:14px}
 .sb-who{text-align:right; line-height:1.2}
 .sb-who span{display:block; font-size:11px; color:var(--tx2)}
 .bell{position:relative; background:none; border:none; font-size:19px; cursor:pointer; color:var(--tx)}
-.bell i{position:absolute; top:-6px; right:-9px; background:var(--err); color:#fff;
+/* The unread count is a number, so it must clear the text-contrast floor, not
+   just the 3:1 badge floor. --err (#E5484D) holds white at only ~4:1; a
+   slightly deeper signal red clears 4.5:1 and still reads as "alert". Fixed
+   across themes because the badge is always red-with-white. */
+.bell i{position:absolute; top:-6px; right:-9px; background:#D42027; color:#fff;
   font-style:normal; font-size:10px; font-weight:700; border-radius:9px; padding:1px 5px}
 
 .training-banner{margin:10px 18px 0; padding:8px 16px; border-radius:10px;
@@ -347,7 +351,7 @@ table.t td.mono, .mono{font-family:var(--mono)}
   color:var(--tx2); text-align:center}
 .hr-labels span:first-child{text-align:left}
 .hr-labels span:last-child{text-align:right}
-.hr-labels span.on{color:var(--accent); font-weight:700}
+.hr-labels span.on{color:var(--accent-tx); font-weight:700}
 
 /* ─── TILES (module workspace) ─── */
 .tiles{display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:12px}
@@ -465,7 +469,7 @@ table.t td.mono, .mono{font-family:var(--mono)}
 .tl-ev.k-validation::before{border-color:var(--warn)}
 .tl-ev.k-aborted::before,.tl-ev.k-unlocked::before{border-color:var(--err); background:var(--err)}
 .tl-ev time{font-family:var(--mono); font-size:11.5px; color:var(--tx2); margin-right:10px}
-.tl-ev .who{color:var(--info); font-size:12px}
+.tl-ev .who{color:var(--info-tx); font-size:12px}
 
 /* (the legacy .gantt-* system was superseded by .sg-* and is removed) */
 
@@ -491,9 +495,13 @@ table.t td.mono, .mono{font-family:var(--mono)}
 .svgchart{width:100%; height:auto; display:block}
 .empty{color:var(--tx2); text-align:center; padding:30px 10px; font-size:13.5px}
 .sec{margin-top:18px}
-a.link{color:var(--accent); text-decoration:none; cursor:pointer}
+/* Heat-number links carry information and are the primary interactive element
+   on every board — they must be readable, not just amber. Text uses the
+   contrast-checked twin (which equals the raw accent on dark themes and
+   darkens on paper); the underline/hover colour can stay the bright hue. */
+a.link{color:var(--accent-tx); text-decoration:none; cursor:pointer}
 .autosave{font-size:11px; color:var(--tx2); font-family:var(--mono)}
-.autosave.saved{color:var(--ok)}
+.autosave.saved{color:var(--ok-tx)}
 :focus-visible{outline:2px solid var(--accent); outline-offset:2px}
 
 /* ================================================================
@@ -608,7 +616,7 @@ main#view > *{animation:viewin .38s cubic-bezier(.2,.8,.25,1) both}
 .sg-title{font-size:15px; font-weight:800; letter-spacing:2.4px; text-transform:uppercase;
   background:var(--grad-molten);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .sg-live{display:inline-flex; align-items:center; gap:6px; font-size:11px; letter-spacing:1.4px;
-  text-transform:uppercase; color:var(--ok); font-weight:800}
+  text-transform:uppercase; color:var(--ok-tx); font-weight:800}
 .sg-live::before{content:""; width:9px; height:9px; border-radius:50%; background:var(--ok);
   box-shadow:0 0 10px var(--ok); animation:pulse 1.6s ease-in-out infinite}
 .sg-switch{display:flex; border:1px solid var(--line); border-radius:99px; overflow:hidden; background:var(--surface)}
@@ -709,7 +717,7 @@ body[data-view="ai"] .btn.primary{background:var(--grad-ai);color:#fff;box-shado
 .sg-chips{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0 2px}
 .sg-chip{font-size:10px;font-weight:800;letter-spacing:.6px;padding:3px 10px;border-radius:99px;
   border:1px solid var(--line);background:var(--surface);color:var(--tx2);cursor:pointer;text-transform:uppercase}
-.sg-chip.on{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.sg-chip.on{color:var(--accent-tx);border-color:var(--accent);background:var(--accent-soft)}
 .sg-body.grab{cursor:grab}.sg-body.grabbing{cursor:grabbing;user-select:none}
 
 /* Machine Status Board (Digital Twin, S.5) */
@@ -2045,69 +2053,105 @@ table.t.long tbody tr:nth-child(even) td{background:var(--line-soft)}
    the one animation that carries information: "this number just changed". */
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SIGNATURE MODE — the fifth theme, the showcase register
+   SIGNATURE MODE — the fifth theme, the showcase register  ·  "MOLTEN DAWN"
    ───────────────────────────────────────────────────────────────────────────
-   Allowed to be richer than the other four, but it earns that with DEPTH, not
-   noise: a deeper graphite canvas, a genuine elevation ladder, warmer glass,
-   and a molten hairline on the surfaces that matter. What it deliberately does
-   NOT do is the thing that would make it read as crypto, gaming or sci-fi —
-   no neon, no saturated glows on everything, no scanlines, no hex grids, no
-   competing accent colours. One accent, spent where the plant is hot.
+   The showcase is LIGHT — a warm porcelain canvas lit by the colour of the
+   process itself: an amber dawn glow at the top-right, a cool steel-indigo
+   counter-glow at the lower-left, a whisper of caster-mint below. This is the
+   register of Stripe / Linear / Vercel light mode — premium light dashboards
+   earn their feel from warm neutrals, SOFT COLOURED SHADOWS, one confident
+   accent and generous type, not from rainbow saturation.
 
-   Every token in the contract is declared here, exactly like the other four,
-   so nothing falls back to another theme. Motion stays on the same budget:
-   composited properties only, and the low-power rules still win when set.
+   It is allowed to be richer than the other four, and it earns that with
+   COLOUR + DEPTH rather than noise: translucent warm glass so the ambient
+   blooms bleed through the frost (the glassmorphism look), a warm-tinted
+   elevation ladder, and the molten accent spent where the plant is hot.
+   What it deliberately does NOT do: neon, saturated glows on everything, or
+   gradient text on data values (that once defeated KPI contrast). Data stays
+   flat, warm-ink and contrast-checked.
+
+   Because the canvas is now light, every token that collapses on paper is
+   re-derived here exactly as White mode does it: the state-colour TEXT twins,
+   the per-module accent-text twins, and the firmer tag borders. Every token
+   in the contract is declared, so nothing falls back to a dark theme. Motion
+   stays on budget: composited properties only; low-power rules still win.
    ═══════════════════════════════════════════════════════════════════════════ */
 body[data-theme="signature"]{
-  --bg:#080B11; --bg2:#0D1219;
-  --surface:rgba(22,29,39,.66);          /* warmer, deeper glass than dark */
-  --surface-solid:#141B25;
-  --elev-1:#0D1219; --elev-2:#151C26; --elev-3:#1E2733;
-  --line:rgba(163,186,214,.17); --line-soft:rgba(163,186,214,.085);
-  --tx:#EEF3F9; --tx2:#93A2B5;
-  --glassblur:22px;
-  --scrim:rgba(3,6,11,.66);
-  --focus-ring:rgba(255,138,61,.6);
-  --sh-1:0 1px 2px rgba(0,0,0,.4);
-  --sh-2:0 6px 20px rgba(0,0,0,.46);
-  --sh-3:0 24px 56px rgba(0,0,0,.6);
+  /* --bg MUST equal the real canvas: .sg-lab fades to var(--bg) over the
+     Gantt gutter, and a mismatch paints a smear there (learned in White). */
+  --bg:#F7F2EB; --bg2:#EFE7DB;
+  --surface:rgba(255,253,249,.66);       /* translucent warm frost — blooms read through */
+  --surface-solid:#FFFCF8;
+  --elev-1:#F1E9DD; --elev-2:#FFFCF8; --elev-3:#FFFFFF;
+  --line:#E7DCCB; --line-soft:#F2EADD;
+  --tx:#20180F; --tx2:#6E6053;           /* warm ink; muted twin holds ≥4.5:1 on the frost */
+  --glassblur:24px;
+  --scrim:rgba(42,28,16,.30);            /* warm light scrim on a light canvas */
+  --focus-ring:rgba(255,138,61,.62);
+  /* Soft, WARM-TINTED, layered shadows — the single biggest reason a light
+     surface reads as premium rather than flat. Brown-amber, never grey. */
+  --sh-1:0 1px 2px rgba(96,60,26,.06);
+  --sh-2:0 4px 14px rgba(96,60,26,.10), 0 1px 3px rgba(96,60,26,.06);
+  --sh-3:0 22px 50px rgba(96,60,26,.16), 0 6px 16px rgba(96,60,26,.08);
   background:
-    radial-gradient(128% 78% at 78% -8%, rgba(124,77,255,.10), transparent 60%),
-    radial-gradient(108% 70% at 6% 104%, rgba(255,138,61,.09), transparent 62%),
-    linear-gradient(178deg, #0A0E15 0%, #080B11 52%, #070A0F 100%);
+    radial-gradient(120% 82% at 84% -12%, rgba(255,150,70,.14), transparent 58%),
+    radial-gradient(105% 74% at 2% 110%, rgba(108,99,255,.11), transparent 60%),
+    radial-gradient(92% 66% at 52% 122%, rgba(34,211,190,.07), transparent 60%),
+    linear-gradient(168deg, #FBF7F1 0%, #F6F1EA 50%, #F1EBE1 100%);
   background-attachment:fixed;
 }
+/* State-colour TEXT twins — the saturated hues are for FILLS/borders and
+   collapse as text on paper; text switches to a darkened twin (as in White). */
+body[data-theme="signature"]{
+  --ok-tx:#0B6B4F; --warn-tx:#7A5300; --err-tx:#B3161B; --info-tx:#1F5E8C;
+  --state-ready-tx:#06657D; --state-maint-tx:#8A4A00;
+}
+/* Per-module accent TEXT twins — amber now carries information (live metal),
+   so it must clear 4.5:1 on the light canvas. Bright hues stay on fills/bars;
+   only text darkens. Same law and same values as White mode. */
+body[data-theme="signature"]{                       --accent-tx:#8A3D05;
+                                                    --st-event-route:#6D28D9; }
+body[data-theme="signature"][data-view="entry"]{    --accent-tx:#0A5B80; }
+body[data-theme="signature"][data-view="heats"]{    --accent-tx:#2A5F87; }
+body[data-theme="signature"][data-view="reports"]{  --accent-tx:#7A5300; }
+body[data-theme="signature"][data-view="search"]{   --accent-tx:#00647D; }
+body[data-theme="signature"][data-view="calculator"]{ --accent-tx:#5B2FB8; }
+body[data-theme="signature"][data-view="knowledge"]{ --accent-tx:#6B2E96; }
+body[data-theme="signature"][data-view="admin"]{    --accent-tx:#A31232; }
+/* On the light frost the translucent tag fill barely separates from the
+   card, so tags get a real hairline border (as in White). */
+body[data-theme="signature"] .tag{border-color:var(--line)}
 
-/* Panels get a touch more presence and a lit top edge — the same idea as the
-   molten seam, applied as craft rather than decoration. */
+/* Panels get a lit top edge — a warm-white inner highlight over the soft
+   coloured shadow. On light this is what reads as "lifted glass". */
 body[data-theme="signature"] .glass{
   border-color:var(--line);
-  box-shadow:var(--sh-2), inset 0 1px 0 rgba(255,255,255,.045);
+  box-shadow:var(--sh-2), inset 0 1px 0 rgba(255,255,255,.72);
 }
 body[data-theme="signature"] .card.glass:hover,
 body[data-theme="signature"] .kpi.glass:hover{
-  border-color:rgba(255,138,61,.30);
+  border-color:rgba(255,138,61,.42);
 }
 /* KPI values carry the showcase weight, still flat and still contrast-checked. */
 body[data-theme="signature"] .kpi b{letter-spacing:-.02em}
 body[data-theme="signature"] .statusbar{
-  background:linear-gradient(180deg, var(--elev-2), var(--elev-1));
+  background:linear-gradient(180deg, #FFFFFF, #F7F0E7);
 }
-/* The rail reads as a machined console strip. */
+/* The rail reads as a bright brushed-console strip. */
 body[data-theme="signature"] .rail{
-  background:linear-gradient(180deg, #0E141C 0%, #0A0F16 100%);
+  background:linear-gradient(180deg, #FFFCF8 0%, #F3EADE 100%);
   border-right-color:var(--line);
 }
 /* The Gantt hero is the centrepiece of the dashboard in this mode. */
 body[data-theme="signature"] .sg-hero{
-  box-shadow:var(--sh-3), inset 0 1px 0 rgba(255,255,255,.05);
+  box-shadow:var(--sh-3), inset 0 1px 0 rgba(255,255,255,.82);
 }
-/* Login stage: a deeper field for the molten route to sit against. */
+/* Login stage: a bright, colour-lit field for the molten route to travel. */
 body[data-theme="signature"] .lg-stage{
   background:
-    radial-gradient(120% 92% at 10% 6%, rgba(255,138,61,.13), transparent 58%),
-    radial-gradient(90% 70% at 92% 96%, rgba(124,77,255,.10), transparent 60%),
-    linear-gradient(162deg, #0E141C 0%, #080B11 64%);
+    radial-gradient(120% 92% at 12% 6%, rgba(255,150,70,.18), transparent 56%),
+    radial-gradient(96% 74% at 92% 96%, rgba(108,99,255,.13), transparent 58%),
+    linear-gradient(160deg, #FFFBF5 0%, #F5EEE4 66%);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -2372,10 +2416,14 @@ img, svg, a{-webkit-user-drag:none}
   border-radius:var(--radius-pill); border:var(--seam) solid var(--line);
   color:var(--tx2); white-space:nowrap;
 }
-.nc-badge.emergency{color:var(--err); border-color:var(--err); background:var(--err-soft)}
-.nc-badge.approval {color:var(--info); border-color:var(--info); background:var(--info-soft)}
-.nc-badge.alert    {color:var(--warn); border-color:var(--warn); background:var(--warn-soft)}
-.nc-badge.updates  {color:var(--ok);   border-color:var(--ok);   background:var(--ok-soft)}
+/* Category text uses the readable twin (as every other status chip does):
+   the saturated hue stays on the border + tinted fill, but the LABEL switches
+   to the darkened twin so it clears 4.5:1 on paper — the raw hues measured
+   1.5–3.3:1 on the light canvas. Twins equal the raw hue on dark themes. */
+.nc-badge.emergency{color:var(--err-tx);  border-color:var(--err);  background:var(--err-soft)}
+.nc-badge.approval {color:var(--info-tx); border-color:var(--info); background:var(--info-soft)}
+.nc-badge.alert    {color:var(--warn-tx); border-color:var(--warn); background:var(--warn-soft)}
+.nc-badge.updates  {color:var(--ok-tx);   border-color:var(--ok);   background:var(--ok-soft)}
 .nc-dot{
   width:8px; height:8px; border-radius:50%; background:var(--accent);
   flex:0 0 8px; box-shadow:0 0 8px var(--accent-soft);
