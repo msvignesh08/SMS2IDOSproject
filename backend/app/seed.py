@@ -160,27 +160,11 @@ EQUIPMENT = (
     + [(f"LD-{i:02d}", "ladle") for i in range(1, 16)]
 )
 
-DELAY_REASONS = [
-    ("Mechanical", "Roof/electrode arm fault", "Mechanical Maintenance"),
-    ("Mechanical", "Hydraulic system failure", "Mechanical Maintenance"),
-    ("Mechanical", "Water leakage — panels/mould", "Mechanical Maintenance"),
-    ("Electrical", "Transformer trip", "Electrical Maintenance"),
-    ("Electrical", "Power interruption / grid restriction", "Electrical Maintenance"),
-    ("Electrical", "Drive/VVFD fault", "Electrical Maintenance"),
-    ("Process", "High bath temperature — waiting", "Production"),
-    ("Process", "Chemistry adjustment / re-blow", "Production"),
-    ("Process", "Waiting for lab result", "Laboratory"),
-    ("Crane", "Crane not available", "Crane Services"),
-    ("Material", "Hot metal not available", "Blast Furnace"),
-    ("Material", "Scrap/alloy not available", "Raw Material Handling"),
-    ("Material", "Ladle not available", "Ladle Management"),
-    ("Utility", "Oxygen pressure low", "Utilities"),
-    ("Utility", "Argon/nitrogen not available", "Utilities"),
-    ("Quality", "Billet inspection hold", "Quality"),
-    ("Caster", "Tundish/SEN change", "Casting"),
-    ("Caster", "Strand breakout", "Casting"),
-    ("Other", "Shift change / administrative", "Production"),
-]
+# The delay taxonomy is the plant's own, imported verbatim from the company's
+# "Delay Codes for Reference.xlsx" and baked into delay_codes_data.py. It is
+# organised stage → AGENCY → reason; the Delay dialog offers it as two
+# cascading dropdowns. Regenerate with tools/gen_delay_codes.py.
+from .delay_codes_data import DELAY_CODES  # (stage, agency, reason) rows
 
 
 def seed(db: Session):
@@ -224,8 +208,9 @@ def seed(db: Session):
             db.add(M.Equipment(code=code, kind=kind))
 
     if db.query(M.DelayReason).count() == 0:
-        for cat, reason, dept in DELAY_REASONS:
-            db.add(M.DelayReason(category=cat, reason=reason, department=dept))
+        for stage, agency, reason in DELAY_CODES:
+            db.add(M.DelayReason(category=agency, reason=reason,
+                                 stage=stage, department=agency))
 
     if db.query(M.HeatSeries).count() == 0:
         db.add(M.HeatSeries(prefix="E", next_number=260151, pad=6))

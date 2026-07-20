@@ -190,7 +190,11 @@ def drive_heat(tok, spec, masters, log):
     call("POST", f"/api/heats/{hn}/stages/eaf/chemistry",
          {"label": "EAF Bath", "values": CHEM["bath"]()}, token=op)
     for d in spec.get("delays", []):
-        r = next((x for x in reasons if x["category"] == d["cat"]), reasons[0])
+        # These demo delays sit on the EAF stage, so pick a reason that belongs
+        # to the chosen agency AND to EAF (the company codes are stage-scoped).
+        eaf_reasons = [x for x in reasons if (x.get("stage") or "eaf") == "eaf"]
+        r = next((x for x in eaf_reasons if x["category"] == d["cat"]),
+                 eaf_reasons[0] if eaf_reasons else reasons[0])
         # DelayIn takes start_time/end_time (not start/end).
         call("POST", f"/api/heats/{hn}/stages/eaf/delays",
              {"reason_id": r["id"], "start_time": t(base + 1, 20),
@@ -329,7 +333,8 @@ def build_plan(days: int):
     refinings = ["ZPF", "LRF-5", "LRF-6"]
     routes = ["VD-2", "VD-3", "BC-2", "BC-3"]
     shifts = ["A", "B", "C"]
-    delay_cats = ["Mechanical", "Electrical", "Process", "Operational", "Raw Material"]
+    # Real company agencies present on the EAF stage (see delay_codes_data.py).
+    delay_cats = ["Mechanical", "Electrical", "EAF Operations", "Crane", "Utility", "Refractory"]
     notes = ["Crane unavailable", "Electrode change", "Ladle not ready",
              "Tundish preparation", "Power dip", "Scrap bucket delayed"]
 
@@ -375,7 +380,7 @@ def build_plan(days: int):
             "hm_weight": round(random.uniform(88, 98), 1), "hm_temp": random.randint(1320, 1380),
             "energy": random.randint(34000, 42000), "tap_weight": round(random.uniform(98, 108), 1),
             "tap_temp": random.randint(1630, 1670),
-            "delays": [{"cat": "Process", "min": 14, "note": "Temperature correction"}] if n == 1 else [],
+            "delays": [{"cat": "EAF Operations", "min": 14, "note": "Temperature correction"}] if n == 1 else [],
         })
     # ── Two training heats (excluded from reports by design) ──
     for n in range(2):

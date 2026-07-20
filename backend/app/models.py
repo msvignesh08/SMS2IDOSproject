@@ -138,8 +138,14 @@ class Equipment(Base):
 class DelayReason(Base):
     __tablename__ = "delay_reasons"
     id = Column(Integer, primary_key=True)
-    category = Column(String, nullable=False)   # Mechanical, Electrical, Process, Crane, Material, Utility, Quality, Other
+    # `category` is the plant's AGENCY (Mechanical, Electrical, Crane, EAF
+    # Operations, …). `stage` scopes a reason to a production stage so the
+    # Delay dialog can offer the same agency a different reason list per stage,
+    # exactly as the company's delay-code sheet is organised. Empty stage = a
+    # global reason offered everywhere (kept for backward compatibility).
+    category = Column(String, nullable=False)   # Agency
     reason = Column(String, nullable=False)
+    stage = Column(String, default="", index=True)   # eaf|zpf|lrf|vd|caster|""
     department = Column(String, default="")
     archived = Column(Boolean, default=False)
 

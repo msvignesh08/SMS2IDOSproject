@@ -210,7 +210,7 @@ def masters(user: M.User = Depends(get_current_user), db: DBSession = Depends(ge
         "equipment": [{"id": e.id, "code": e.code, "kind": e.kind, "active": e.active}
                       for e in db.query(M.Equipment).filter_by(archived=False)],
         "delay_reasons": [{"id": d.id, "category": d.category, "reason": d.reason,
-                           "department": d.department}
+                           "stage": d.stage or "", "department": d.department}
                           for d in db.query(M.DelayReason).filter_by(archived=False)],
         "heat_series": [{"id": s.id, "prefix": s.prefix, "next_number": s.next_number,
                          "pad": s.pad, "active": s.active}
@@ -259,8 +259,9 @@ def add_material(body: MaterialIn, user: M.User = Depends(require_perm("admin"))
 
 
 class DelayReasonIn(BaseModel):
-    category: str
+    category: str            # Agency
     reason: str
+    stage: str = ""          # eaf|zpf|lrf|vd|caster|"" (all stages)
     department: str = ""
 
 
@@ -269,7 +270,7 @@ def add_delay_reason(body: DelayReasonIn,
                      user: M.User = Depends(require_perm("admin")),
                      db: DBSession = Depends(get_db)):
     db.add(M.DelayReason(category=body.category, reason=body.reason,
-                         department=body.department))
+                         stage=body.stage, department=body.department or body.category))
     audit(db, user, "admin", "delay_reason_created", detail=body.reason)
     db.commit(); return {"ok": True}
 

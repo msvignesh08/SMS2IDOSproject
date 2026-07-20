@@ -1951,7 +1951,11 @@ function materialsTile(h, stage, tile, sd, readonly) {
 }
 
 function delaysTile(h, stage, sd, readonly) {
-  const reasons = S.masters.delay_reasons;
+  // Company delay taxonomy: stage → AGENCY → reason. Offer only the reasons
+  // that belong to THIS stage (plus any global reason with no stage set), then
+  // let the operator pick the agency first and the reason second.
+  const stageReasons = S.masters.delay_reasons.filter(r => !r.stage || r.stage === stage);
+  const agencies = [...new Set(stageReasons.map(r => r.category))].sort((a, b) => a.localeCompare(b));
   const rows = sd.delays.map(d => `
     <tr><td class="mono">${fmtT(d.start)}</td><td class="mono">${d.end ? fmtT(d.end) : `<span class="tag warn">open</span>`}</td>
       <td class="mono">${d.min ?? "—"}</td><td>${esc(d.reason)}</td><td>${esc(d.remarks || "")}</td>
@@ -1963,8 +1967,15 @@ function delaysTile(h, stage, sd, readonly) {
     <div class="fgrid">
       <label class="fld"><span>Start time</span><input id="dl-start" type="datetime-local" value="${nowLocalISO()}"></label>
       <label class="fld"><span>End time <span class="unit">(leave blank if ongoing)</span></span><input id="dl-end" type="datetime-local"></label>
-      <label class="fld" style="grid-column:1/-1"><span>Reason (from Delay Master)</span>
-        <select id="dl-reason">${reasons.map(r => `<option value="${r.id}">${esc(r.category)} — ${esc(r.reason)}</option>`).join("")}</select></label>
+      <label class="fld" style="grid-column:1/-1"><span>Agency</span>
+        <select id="dl-agency">
+          <option value="" disabled selected>Select agency…</option>
+          ${agencies.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join("")}
+        </select></label>
+      <label class="fld" style="grid-column:1/-1"><span>Reason</span>
+        <select id="dl-reason" disabled>
+          <option value="" disabled selected>Select an agency first…</option>
+        </select></label>
       <label class="fld" style="grid-column:1/-1"><span>Remarks</span><input id="dl-rem"></label>
     </div>
     <div class="modal-foot" style="position:static;justify-content:flex-start">
@@ -1975,12 +1986,23 @@ function delaysTile(h, stage, sd, readonly) {
       <tbody>${rows}</tbody></table>
     ${!sd.delays.length ? `<div class="empty">No delays recorded — good shift.</div>` : ""}
     <div class="modal-foot"><button class="btn" onclick="UI.closeModal()">Close</button></div>`, m => {
+    // Cascade: choosing an agency fills the reason dropdown with just that
+    // agency's reasons for this stage. The reason stays locked until then.
+    const agencySel = $("#dl-agency", m), reasonSel = $("#dl-reason", m);
+    if (agencySel && reasonSel) agencySel.onchange = () => {
+      const list = stageReasons.filter(r => r.category === agencySel.value);
+      reasonSel.innerHTML = `<option value="" disabled selected>Select reason…</option>` +
+        list.map(r => `<option value="${r.id}">${esc(r.reason)}</option>`).join("");
+      reasonSel.disabled = !list.length;
+    };
     const add = $("#dl-add", m);
     if (add) add.onclick = async () => {
+      const rid = +($("#dl-reason", m).value);
+      if (!rid) { toast("Select an agency and a reason first.", "warn"); return; }
       try {
         await POST(`/api/heats/${h.heat_no}/stages/${stage}/delays`, {
           start_time: $("#dl-start", m).value, end_time: $("#dl-end", m).value || null,
-          reason_id: +$("#dl-reason", m).value, remarks: $("#dl-rem", m).value,
+          reason_id: rid, remarks: $("#dl-rem", m).value,
         });
         toast("Delay recorded", "ok");
         UI.closeModal();
