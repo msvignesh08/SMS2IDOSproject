@@ -46,11 +46,5 @@ def index():
 
 @app.get("/health")
 def health():
-    # `demo_credentials` tells the login page whether it may show the demo
-    # account hint. It is true ONLY while the seeded passwords are still the
-    # published defaults — configure SMS2_ADMIN_PASSWORD / SMS2_SEED_PASSWORD
-    # and the hint disappears on its own. No secret is exposed here: the flag
-    # says whether the PUBLIC defaults are in use, never what the password is.
-    from .seed import SEED_PASSWORDS_ARE_DEFAULT
     return {"app": APP_NAME, "version": APP_VERSION, "status": "ok",
-            "motto": APP_MOTTO, "demo_credentials": SEED_PASSWORDS_ARE_DEFAULT}
+            "motto": APP_MOTTO}
