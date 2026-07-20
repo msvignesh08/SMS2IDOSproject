@@ -35,19 +35,6 @@ pip access once (or a wheels folder).
 Open **http://\<server-ip\>:8020** from any plant workstation browser
 (Chrome/Edge/Firefox). Nothing to install on client machines.
 
-### Demo accounts (change immediately in Admin → Users)
-
-| Employee ID | Role              | Password    |
-|-------------|-------------------|-------------|
-| `OWNER`     | Owner             | `owner@123` |
-| `ADMIN`     | Administrator     | `admin@123` |
-| `SE001`     | Shift Engineer    | `steel@123` |
-| `SI001`     | Shift Incharge    | `steel@123` |
-| `OP001`     | Operator          | `steel@123` |
-| `QE001`     | Quality Engineer  | `steel@123` |
-| `PM001`     | Production Manager| `steel@123` |
-| `VIEW01`    | View Only         | `steel@123` |
-
 ### Production deployment
 
 - Copy the folder to `/opt/sms2-idos`, install, then use
