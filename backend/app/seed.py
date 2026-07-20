@@ -4,9 +4,26 @@ Bootstraps roles, users, grades (with target chemistry), materials (with
 compositions & recoveries for the Calculation Engine), equipment, delay
 reason codebook and the heat number series. Idempotent — safe to re-run.
 """
+import os
+
 from sqlalchemy.orm import Session
 from . import models as M
 from .core.security import hash_password
+
+# ── SEED PASSWORDS ─────────────────────────────────────────────────────────
+# The defaults below are convenience credentials for local development and are
+# published in this repository, so they are PUBLIC. On any deployment that is
+# reachable from the internet, set these environment variables to real secrets:
+#
+#     SMS2_ADMIN_PASSWORD   password for OWNER and ADMIN
+#     SMS2_SEED_PASSWORD    password for the demo operator accounts
+#
+# They only apply when the database is first created. An existing database
+# keeps whatever passwords it already has — change those in Admin → Users.
+_ADMIN_PW = os.environ.get("SMS2_ADMIN_PASSWORD") or "admin@123"
+_USER_PW = os.environ.get("SMS2_SEED_PASSWORD") or "steel@123"
+# True when the defaults are still in force, i.e. nothing has been configured.
+SEED_PASSWORDS_ARE_DEFAULT = (_ADMIN_PW == "admin@123" and _USER_PW == "steel@123")
 
 PERMS_ALL = ["production.entry", "production.approve.l1", "production.approve.l2",
              "production.approve.l3", "reports.view", "reports.export",
@@ -32,14 +49,14 @@ ROLES = [
 ]
 
 USERS = [  # employee_id, name, designation, department, role, password
-    ("OWNER", "Plant Owner", "Owner", "Management", "Owner", "owner@123"),
-    ("ADMIN", "System Administrator", "Administrator", "IT", "Administrator", "admin@123"),
-    ("SE001", "R. Sharma", "Shift Engineer", "SMS-2", "Shift Engineer", "steel@123"),
-    ("SI001", "K. Patnaik", "Shift Incharge", "SMS-2", "Shift Incharge", "steel@123"),
-    ("OP001", "M. Behera", "EAF Operator", "SMS-2", "Operator", "steel@123"),
-    ("QE001", "S. Mishra", "Quality Engineer", "Quality", "Quality Engineer", "steel@123"),
-    ("PM001", "A. Rao", "Production Manager", "SMS-2", "Production Manager", "steel@123"),
-    ("VIEW01", "Guest Viewer", "Observer", "Management", "View Only", "steel@123"),
+    ("OWNER", "Plant Owner", "Owner", "Management", "Owner", _ADMIN_PW),
+    ("ADMIN", "System Administrator", "Administrator", "IT", "Administrator", _ADMIN_PW),
+    ("SE001", "R. Sharma", "Shift Engineer", "SMS-2", "Shift Engineer", _USER_PW),
+    ("SI001", "K. Patnaik", "Shift Incharge", "SMS-2", "Shift Incharge", _USER_PW),
+    ("OP001", "M. Behera", "EAF Operator", "SMS-2", "Operator", _USER_PW),
+    ("QE001", "S. Mishra", "Quality Engineer", "Quality", "Quality Engineer", _USER_PW),
+    ("PM001", "A. Rao", "Production Manager", "SMS-2", "Production Manager", _USER_PW),
+    ("VIEW01", "Guest Viewer", "Observer", "Management", "View Only", _USER_PW),
 ]
 
 GRADES = {  # code: {element: (min, aim, max)}

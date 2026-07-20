@@ -186,8 +186,15 @@ async function boot() {
   const crFoot = $("#login-copyright");
   if (crFoot) crFoot.innerHTML = copyrightHTML("compact");
 
-  fetch("/health").then(r => r.json()).then(h =>
-    $("#login-plant").textContent = `${h.app} v${h.version} · server online`).catch(() => {});
+  fetch("/health").then(r => r.json()).then(h => {
+    $("#login-plant").textContent = `${h.app} v${h.version} · server online`;
+    // The demo account hint is shown ONLY while the published default
+    // passwords are still in force. Configure SMS2_ADMIN_PASSWORD /
+    // SMS2_SEED_PASSWORD on the server and it disappears — a public
+    // deployment must not advertise how to sign in as Administrator.
+    const demo = $(".login-demo");
+    if (demo && h.demo_credentials === false) demo.remove();
+  }).catch(() => {});
 
   if (S.token) {
     try {
