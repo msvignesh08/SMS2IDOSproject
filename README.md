@@ -258,8 +258,9 @@ choices: **ZPF · LRF-5 · LRF-6**.
   and the LRF unit is pre-filled from the decision.
 - After LRF the existing decision continues to offer **VD-2 · VD-3 · BC-2 ·
   BC-3**; vacuum degassing is never mandatory.
-- Gantt lanes for ZPF, VD and the transfer cars hide themselves when no heat
-  in the window used them.
+- In **Heat** view a bypassed heat shows no ZPF bar at all. **Machine** view is
+  the opposite: it always draws the whole plant, every lane, because an idle
+  lane is itself information — that unit is free.
 
 Integrity is preserved in both directions: a locked heat's route is immutable,
 and a heat that already carries ZPF production data cannot be re-routed to

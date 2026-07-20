@@ -432,9 +432,14 @@ def smart_gantt(mode: str = "heat", span: str = "day", plant_day: str | None = N
                         for b in p["bars"] if b["stage"] == "caster" and b.get("ltc") == code]
             delays = [d for p in picked for d in p["delays"] if d["machine"] == code]
             events = [e for p in picked for e in p["events"] if e["machine"] == code]
-            # Gantt Chart Law: show only what heats actually used
-            if code.startswith(("VD", "LTC", "ZPF")) and not bars and not delays:
-                continue
+            # MACHINE MODE SHOWS THE WHOLE PLANT — every lane, always.
+            # VD, LTC and ZPF lanes used to be dropped when no heat had used
+            # them in the window. That optimised away real information: on a
+            # machine board an EMPTY LANE IS A FACT — that unit is idle and
+            # available. Hiding it makes the plant look smaller than it is and
+            # leaves the operator unable to tell "idle" from "not there".
+            # (Heat mode is unaffected: a ZPF-bypassed heat still shows no ZPF
+            # bar in its own row, which is the Process Route Law.)
             util = round(sum((plant_time.duration_minutes(
                 datetime.fromisoformat(b["start"]), datetime.fromisoformat(b["end"])) or 0)
                 for b in bars), 0)
