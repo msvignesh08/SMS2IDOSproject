@@ -34,17 +34,26 @@ step is clearly isolated in `backdate()` below and touches nothing else.
 
 Usage
 -----
-    python tools/seed_demo.py              # against a running server
-    python tools/seed_demo.py --days 21    # longer history
+    python tools/seed_demo.py                                   # local
+    python tools/seed_demo.py --days 21                         # longer history
+    python tools/seed_demo.py --url https://your.onrender.com   # a deployment
 
 Run it on a FRESH database (delete data/sms2_idos.db*, restart the server).
 The smoke test rotates OP001's password, so a database it has touched will
 fail here — that is expected, not a bug.
+
+Against a REMOTE target it: asks before writing anything, never assumes the
+published demo passwords (env var SMS2_SEED_PASSWORD, else a getpass prompt),
+and SKIPS backdating — `backdate()` edits the local SQLite file, so running it
+against a remote server would rewrite the wrong database. Every heat therefore
+lands on today; multi-day history is a local-only feature.
 """
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
+import os
 import random
 import sqlite3
 import sys
@@ -385,13 +394,44 @@ def build_plan(days: int):
 
 
 def main():
+    global BASE
     ap = argparse.ArgumentParser(description="Generate SMS-2 demo production data.")
     ap.add_argument("--days", type=int, default=14, help="history window (default 14)")
+    ap.add_argument("--url", default=BASE,
+                    help="target server (default %(default)s). Point this at a "
+                         "deployment to populate it, e.g. https://your-app.onrender.com")
+    ap.add_argument("--yes", action="store_true",
+                    help="skip the confirmation prompt for a remote target")
     args = ap.parse_args()
 
+    BASE = args.url.rstrip("/")
+    remote = not any(h in BASE for h in ("127.0.0.1", "localhost", "0.0.0.0"))
+
     print(f"SMS-2 IDOS — demo data generator  ({BASE})\n")
-    tok = {"op": login("OP001", "steel@123"), "se": login("SE001", "steel@123"),
-           "si": login("SI001", "steel@123"), "qe": login("QE001", "steel@123")}
+
+    # ── Credentials ────────────────────────────────────────────────────────
+    # A deployment should NOT be running the published default passwords, so
+    # never assume them for a remote target. Read the environment first, and
+    # otherwise ask — via getpass, so nothing is echoed to the screen or left
+    # in shell history.
+    admin_pw = (os.environ.get("SMS2_ADMIN_PASSWORD") or "").strip()
+    user_pw = (os.environ.get("SMS2_SEED_PASSWORD") or "").strip()
+    if remote:
+        print("  target is REMOTE — this will create real records on that server.")
+        if not user_pw:
+            user_pw = getpass.getpass("  password for SE001/SI001/OP001/QE001: ").strip()
+        if not args.yes:
+            print(f"\n  About to create ~38 heats spanning {args.days} plant days on:")
+            print(f"      {BASE}")
+            if input("  Type 'yes' to continue: ").strip().lower() != "yes":
+                raise SystemExit("  Cancelled — nothing was written.\n")
+        print()
+    else:
+        user_pw = user_pw or "steel@123"
+        admin_pw = admin_pw or "admin@123"
+
+    tok = {"op": login("OP001", user_pw), "se": login("SE001", user_pw),
+           "si": login("SI001", user_pw), "qe": login("QE001", user_pw)}
     masters = call("GET", "/api/admin/masters", token=tok["se"])
     print(f"  masters: {len(masters['grades'])} grades, {len(masters['materials'])} materials, "
           f"{len(masters['delay_reasons'])} delay reasons")
@@ -423,8 +463,17 @@ def main():
             print(f"\n  aborted {target} (diverted heat)")
 
     if hist:
-        n = backdate(hist)
-        print(f"  backdated {n} historical heats across the window")
+        if remote:
+            # backdate() edits the LOCAL SQLite file directly. Against a remote
+            # target that would silently rewrite the wrong database — the one on
+            # this machine — while the server's data stayed untouched. Skip it.
+            print(f"\n  ! {len(hist)} heats could not be backdated: the plant day is")
+            print("    stamped by the server's clock and there is no API to change")
+            print("    it, so every heat lands on TODAY on a remote target.")
+            print("    History spanning several days only works locally.")
+        else:
+            n = backdate(hist)
+            print(f"  backdated {n} historical heats across the window")
 
     print(f"\nDone — {len(made)} heats created.")
     print("Reload the dashboard; the trend, Pareto and audit report now have history.")
