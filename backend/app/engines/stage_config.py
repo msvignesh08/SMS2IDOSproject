@@ -21,7 +21,13 @@ def F(key, label, type="number", req=False, auto=False, options=None, unit="", s
 STAGE_DEFS = {
     # ── MODULE 1 — HOT METAL & SCRAP (6A) ─────────────────────────────
     "hot_metal": {
-        "title": "Hot Metal & Scrap",
+        # CHARGE MIX — hot metal and scrap were two separate sections; the
+        # plant logbook treats them as one charge, so they are merged here.
+        # The stage KEY stays "hot_metal" on purpose: it is referenced by the
+        # stage sequence, the gates, the Gantt machine map (HM-BAY), existing
+        # records and the smoke suite. Renaming the key would orphan every
+        # heat already in the database; only the title and tiles change.
+        "title": "Charge Mix",
         "icon": "🔥",
         "authorized": ["Operator", "Shift Engineer", "Shift Incharge", "Administrator"],
         "tiles": [
@@ -29,21 +35,31 @@ STAGE_DEFS = {
                 F("blast_furnace", "Blast Furnace", "select", req=True, options=["BF-1", "BF-2"]),
                 F("ladle_no", "Ladle Number", "select", req=True,
                   options=[str(i) for i in range(1, 16)]),
+                F("furnace_campaign", "F/C — Furnace Campaign"),
+                F("lead_seq", "Lead Sequence"),
             ]},
-            {"key": "hot_metal", "label": "Hot Metal", "icon": "🫕", "fields": [
+            # One charge, one tile: hot metal and the scrap mix together.
+            {"key": "charge_mix", "label": "Charge Mix", "icon": "⚖", "fields": [
                 F("hm_weight", "Hot Metal Weight", req=True, unit="t"),
                 F("hm_temp", "Hot Metal Temperature", req=True, unit="°C"),
                 F("hm_arrival", "Arrival Time", "time"),
                 F("hm_charging", "Charging Time", "time", req=True),
+                F("dri_feed", "DRI Feed", unit="t"),
+                F("hot_heel", "Hot Heel", unit="t"),
                 F("hm_remarks", "Remarks", "textarea"),
             ]},
             {"key": "chemistry", "label": "Chemistry", "icon": "🧪",
              "chemistry": {"label": "Hot Metal", "elements": CHEM_BASE, "required": True}},
-            {"key": "scrap", "label": "Scrap Details", "icon": "🧲",
-             "materials": {"category": "scrap", "label": "Scrap Charging"}},
-            {"key": "summary", "label": "Charge Summary", "icon": "⚖", "fields": [
+            # Bundle, pig iron, skull, internal return and DRI are MATERIALS,
+            # not fields — they are picked from masters with a quantity, so new
+            # scrap types can be added in Admin without a code change.
+            {"key": "scrap", "label": "Scrap & Charge Materials", "icon": "🧲",
+             "materials": {"category": "scrap", "label": "Charge Mix Additions"}},
+            {"key": "summary", "label": "Charge Summary", "icon": "📊", "fields": [
                 F("total_scrap", "Total Scrap Weight", auto=True, unit="t"),
                 F("total_charge", "Total Charge Weight", auto=True, unit="t"),
+                F("hm_pct", "Hot Metal %", auto=True, unit="%"),
+                F("dri_pct", "DRI %", auto=True, unit="%"),
             ]},
             {"key": "remarks", "label": "Remarks", "icon": "📝", "fields": [
                 F("stage_remarks", "Stage Remarks", "textarea"),
@@ -75,9 +91,14 @@ STAGE_DEFS = {
                 F("o2_end", "Oxygen Blowing End", "time"),
                 F("n2_consumption", "Nitrogen Consumption", unit="Nm³"),
                 F("ar_consumption", "Argon Consumption", unit="Nm³"),
+                F("mix_gas", "Mixed Gas", unit="Nm³"),
+                F("tapping_oxygen", "Tapping Oxygen", unit="Nm³"),
             ]},
             {"key": "electrode", "label": "Electrode Consumption", "icon": "🕯", "fields": [
                 F("electrode_kg", "Electrode Consumption", unit="kg"),
+                F("electrode_addition", "Electrode Addition", unit="kg"),
+                F("electrode_supplier", "Electrode Supplier"),
+                F("electrode_break", "Electrode Break", "check"),
                 F("electrode_joints", "Electrode Joint Count", step="1"),
                 F("electrode_change", "Electrode Change", "check"),
                 F("electrode_remarks", "Electrode Remarks", "textarea"),
@@ -145,6 +166,10 @@ STAGE_DEFS = {
         "tiles": [
             {"key": "operation", "label": "Furnace Operation", "icon": "⚡", "fields": [
                 F("lrf_unit", "LRF Unit", "select", req=True, options=["LRF-5", "LRF-6"]),
+                F("lf_power", "LF Power", unit="kWh"),
+                F("aux_power", "Auxiliary Power", unit="kWh"),
+                F("argon_lrf", "Argon (LRF)", unit="Nm³"),
+                F("lf_electrode_addition", "LF Electrode Addition", unit="kg"),
                 F("lrf_start", "LRF Start Time", "time", req=True),
                 F("lrf_end", "LRF End Time", "time", req=True),
                 F("power_on", "Power ON", "time"),
@@ -186,7 +211,10 @@ STAGE_DEFS = {
         "optional": True,   # only on VD routes
         "tiles": [
             {"key": "vacuum", "label": "Vacuum Operation", "icon": "🌀", "fields": [
+                F("vd_tank", "VD / Tank No.", "select", options=["VD-2", "VD-3"]),
                 F("vd_start", "VD Start Time", "time", req=True),
+                F("argon_vd", "Argon (VD)", unit="Nm³"),
+                F("nitrogen_vd", "Nitrogen (VD)", unit="Nm³"),
                 F("vac_achieved", "Vacuum Achieved Time", "time"),
                 F("vd_end", "VD End Time", "time", req=True),
                 F("vac_duration", "Total Vacuum Duration", auto=True, unit="min"),
@@ -245,6 +273,8 @@ STAGE_DEFS = {
                 F("billet_length", "Billet Length", req=True, unit="m"),
                 F("billet_count", "Number of Billets", req=True, step="1"),
                 F("billet_weight", "Total Billet Weight", req=True, unit="t"),
+                F("ccm_no", "CCM (Caster No.)", "select", options=["BC-2", "BC-3"]),
+                F("lm_weight", "Liquid Metal Weight", unit="t"),
                 F("production_remarks", "Production Remarks", "textarea"),
             ]},
             {"key": "cutting", "label": "Cutting Details", "icon": "✂", "fields": [
@@ -252,6 +282,21 @@ STAGE_DEFS = {
                 F("cut_end", "Cutting End Time", "time"),
                 F("length_setting", "Billet Length Setting", unit="m"),
                 F("crop_end", "Crop End Length", unit="mm"),
+            ]},
+            # YIELD ACCOUNTING — where the liquid metal went. Every stream the
+            # plant logbook tracks, so the yield figure is auditable rather
+            # than asserted: what was cast, what came back, what was lost.
+            {"key": "yield", "label": "Yield Accounting", "icon": "📉", "fields": [
+                F("cut_reject", "Front & End Cut / Billet Reject", unit="t"),
+                F("tundish_skull", "Tundish Skull", unit="t"),
+                F("sample_wt", "Sample Weight", unit="t"),
+                F("ladle_skull", "Ladle Skull", unit="t"),
+                F("slag_pit", "Slag Pit", unit="t"),
+                F("burn_off", "B/O — Burn Off", unit="t"),
+                F("lm_returned", "Liquid Metal Returned (Others)", unit="t"),
+                F("scale_cut_loss", "Scale & Cut Loss", unit="t"),
+                F("total_losses", "Total Accounted Losses", auto=True, unit="t"),
+                F("yield_pct", "Yield %", auto=True, unit="%"),
             ]},
             {"key": "delays", "label": "Delay Tracking", "icon": "⏱", "delays": True},
         ],

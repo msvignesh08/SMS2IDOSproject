@@ -177,7 +177,15 @@ def auto_calculations(stage: str, data: dict, materials: list[dict]) -> dict:
         scrap = sum(float(m["quantity"]) for m in materials if not m.get("superseded"))
         out["total_scrap"] = round(scrap, 2)
         hm = float(data.get("hm_weight") or 0)
-        out["total_charge"] = round(hm + scrap, 2)
+        dri = float(data.get("dri_feed") or 0)
+        total = hm + scrap
+        out["total_charge"] = round(total, 2)
+        # Charge composition — computed, never typed (Never Guess, 7.10).
+        # The logbook records HM% and DRI%; deriving them here means they can
+        # never disagree with the weights they are supposed to summarise.
+        if total > 0:
+            out["hm_pct"] = round(hm / total * 100, 1)
+            out["dri_pct"] = round(dri / total * 100, 1)
     if stage == "eaf":
         dur("power_on", "power_off", "power_on_duration")
         dur("charging_start", "charging_end", "charging_duration")
@@ -194,4 +202,17 @@ def auto_calculations(stage: str, data: dict, materials: list[dict]) -> dict:
         dur("vd_start", "vd_end", "vac_duration")
     if stage == "caster":
         dur("cast_start", "cast_end", "cast_duration")
+        # Yield accounting: sum every loss stream the logbook tracks, then
+        # express billet output as a percentage of the liquid metal it came
+        # from. Both computed, so the yield figure is always consistent with
+        # the weights beneath it.
+        loss_keys = ("cut_reject", "tundish_skull", "sample_wt", "ladle_skull",
+                     "slag_pit", "burn_off", "lm_returned", "scale_cut_loss")
+        losses = sum(float(data.get(k) or 0) for k in loss_keys)
+        if any(data.get(k) not in (None, "") for k in loss_keys):
+            out["total_losses"] = round(losses, 2)
+        billets = float(data.get("billet_weight") or 0)
+        lm = float(data.get("lm_weight") or 0) or (billets + losses)
+        if lm > 0 and billets > 0:
+            out["yield_pct"] = round(billets / lm * 100, 1)
     return out

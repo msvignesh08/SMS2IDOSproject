@@ -112,6 +112,44 @@ MATERIALS = [
     ("CWC", "Carbon Cored Wire", "wire", "m", {"C": 98.0, "recovery": 80.0}),
     ("CWS", "Sulphur Cored Wire", "wire", "m", {"S": 90.0, "recovery": 70.0}),
     ("CWTI", "FeTi Cored Wire", "wire", "m", {"Ti": 70.0, "recovery": 60.0}),
+
+    # ── Additions from the plant logbook ──────────────────────────────────
+    # These are the remaining columns of the shop-floor sheet. They are
+    # MATERIALS, not form fields: the operator picks one and enters a
+    # quantity, and the same material can be added at tapping (EAF) and again
+    # at LRF — which is exactly what the "Tapping X" / "X" column pairs mean.
+    # Anything missing can be added in Admin -> Masters without a code change.
+    ("BUNDLE", "Bundle Scrap", "scrap", "t", {}),
+    ("IRET", "Internal Return", "scrap", "t", {}),
+    ("NISCR", "Nickel Scrap / Reformer Tube", "scrap", "t", {"Ni": 8.0, "recovery": 95.0}),
+    ("FEMNMC", "FeMn MC", "alloy", "kg", {"Mn": 78.0, "C": 1.5, "recovery": 93.0}),
+    ("FECRMC", "FeCr MC", "alloy", "kg", {"Cr": 64.0, "C": 2.0, "recovery": 95.0}),
+    ("FECRLTI", "FeCr HC (Low Ti)", "alloy", "kg", {"Cr": 62.0, "C": 8.0, "recovery": 95.0}),
+    ("ELCSIMN", "ELC SiMn", "alloy", "kg", {"Mn": 65.0, "Si": 17.0, "C": 0.1, "recovery": 92.0}),
+    ("SIMET", "Silicon Metal", "alloy", "kg", {"Si": 98.0, "recovery": 90.0}),
+    ("MNMET", "Manganese Metal", "alloy", "kg", {"Mn": 99.0, "recovery": 95.0}),
+    ("FEB", "FeB", "alloy", "kg", {"B": 18.0, "recovery": 60.0}),
+    ("FENB", "FeNb", "alloy", "kg", {"Nb": 65.0, "recovery": 95.0}),
+    ("FEP", "Fe-P", "alloy", "kg", {"P": 25.0, "recovery": 90.0}),
+    ("MOCA", "Mo-Calcium (Mo Metal)", "alloy", "kg", {"Mo": 60.0, "recovery": 95.0}),
+    ("SULST", "Sulphur Stick", "alloy", "kg", {"S": 95.0, "recovery": 70.0}),
+    ("FESIF", "FeSi Fines", "alloy", "kg", {"Si": 75.0, "recovery": 85.0}),
+    ("ALSHOT", "Aluminium Shots", "alloy", "kg", {"Al": 97.0, "recovery": 55.0}),
+    ("ALMIX", "Almix / Dolomite", "flux", "kg", {}),
+    ("RADEX", "Radex", "flux", "kg", {}),
+    ("LCC", "LCC", "flux", "kg", {}),
+    ("GRF", "Graphite Fines", "flux", "kg", {"C": 95.0, "recovery": 75.0}),
+    ("METCOKE", "Met Coke", "flux", "kg", {"C": 87.0, "recovery": 75.0}),
+    ("HCOKE", "Injection / Hard Coke", "flux", "kg", {"C": 90.0, "recovery": 78.0}),
+    ("PETCOKE", "Pet Coke / Dololime Top", "flux", "kg", {"C": 92.0, "recovery": 80.0}),
+    ("SWIRE", "Sulphur Wire", "wire", "m", {"S": 90.0, "recovery": 70.0}),
+    ("GRWIRE", "Graphite Wire", "wire", "m", {"C": 95.0, "recovery": 80.0}),
+    ("ALWIRE", "Aluminium Wire", "wire", "m", {"Al": 97.0, "recovery": 65.0}),
+    ("CAFEAL", "Ca-Fe-Al Wire 13 mm", "wire", "m", {"Ca": 20.0, "Al": 25.0, "recovery": 15.0}),
+    ("CAWIRE9", "Ca Wire 9 mm", "wire", "m", {"Ca": 98.0, "recovery": 12.0}),
+    ("PBWIRE", "Lead Wire", "wire", "m", {"Pb": 98.0, "recovery": 40.0}),
+    ("NMNWIRE", "Nitrated Mn Wire", "wire", "m", {"Mn": 75.0, "N": 6.0, "recovery": 70.0}),
+    ("FETIW", "FeTi Wire", "wire", "m", {"Ti": 70.0, "recovery": 60.0}),
 ]
 
 EQUIPMENT = (
