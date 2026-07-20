@@ -47,8 +47,8 @@ fi
 # List mode
 if [ -z "$1" ]; then
   echo "Available backups in $DEST:"
-  ls -1t "$DEST"/*.db 2>/dev/null | while read -r f; do
-    printf "  %-52s %s\n" "$f" "$(du -h "$f" | cut -f1)"
+  ls -1t "$DEST"/*.db "$DEST"/*.db.enc 2>/dev/null | while read -r f; do
+    printf "  %-56s %s\n" "$f" "$(du -h "$f" | cut -f1)"
   done || echo "  (none)"
   echo
   echo "Restore with:  ./deploy/restore.sh <file>   or   ./deploy/restore.sh --latest"
@@ -56,11 +56,30 @@ if [ -z "$1" ]; then
 fi
 
 if [ "$1" = "--latest" ]; then
-  FILE=$(ls -1t "$DEST"/*.db 2>/dev/null | head -1 || true)
+  FILE=$(ls -1t "$DEST"/*.db "$DEST"/*.db.enc 2>/dev/null | head -1 || true)
 else
   FILE="$1"
 fi
 [ -n "$FILE" ] && [ -f "$FILE" ] || { echo "Backup not found: $1"; exit 1; }
+
+# Encrypted backup (.enc): decrypt to a temp file first, restore from that.
+CLEANUP=""
+if [[ "$FILE" == *.enc ]]; then
+  [ -n "$SMS2_BACKUP_PASSPHRASE" ] || {
+    echo "ERROR: $FILE is encrypted. Set SMS2_BACKUP_PASSPHRASE (the same one used"
+    echo "       to create it) and run again."; exit 1; }
+  command -v openssl >/dev/null 2>&1 || { echo "ERROR: openssl needed to decrypt."; exit 1; }
+  DEC="$(mktemp)"
+  if ! openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+        -pass env:SMS2_BACKUP_PASSPHRASE -in "$FILE" -out "$DEC" 2>/dev/null; then
+    rm -f "$DEC"
+    echo "ERROR: could not decrypt — wrong passphrase, or the file is damaged."
+    echo "       Nothing was changed."; exit 1
+  fi
+  FILE="$DEC"; CLEANUP="$DEC"
+  trap '[ -n "$CLEANUP" ] && rm -f "$CLEANUP"' EXIT
+  echo "Decrypted the backup for restore."
+fi
 
 # The server MUST be stopped. Restoring underneath a running server leaves it
 # holding a file handle to the old database and a live WAL that will be

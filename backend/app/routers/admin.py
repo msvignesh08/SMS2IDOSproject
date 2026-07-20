@@ -1,9 +1,9 @@
 """AOGE (Section 10) + SDGPCE (Section 11): users, roles, masters,
 audit log access, backup, maintenance mode, system settings."""
 from __future__ import annotations
-import os, shutil
+import os, shutil, sqlite3
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
@@ -13,6 +13,7 @@ from ..core.config import DATA_DIR, BACKUP_DIR, DATABASE_URL
 from ..core.security import hash_password, verify_password, password_policy_errors
 from .. import models as M
 from ..engines import lifecycle as L
+from ..engines import backup as BK
 from ..engines.lifecycle import audit
 from .auth import get_current_user, require_perm
 
@@ -332,34 +333,158 @@ def set_setting(body: SettingIn, user: M.User = Depends(require_perm("admin")),
 
 @router.post("/backup")
 def backup(user: M.User = Depends(require_perm("admin")), db: DBSession = Depends(get_db)):
-    """Business Continuity (11.12): on-demand backup. SQLite file copy;
-    on PostgreSQL deployments use deploy/backup.sh (pg_dump)."""
-    if not DATABASE_URL.startswith("sqlite"):
-        raise HTTPException(400, "On PostgreSQL, run deploy/backup.sh (pg_dump) on the server.")
-    src = DATABASE_URL.replace("sqlite:///", "")
-    fname = f"sms2_backup_{datetime.now():%Y%m%d_%H%M%S}.db"
-    dst = os.path.join(BACKUP_DIR, fname)
+    """Business Continuity (11.12): on-demand snapshot.
+
+    Was `shutil.copy2` of the .db file, which in WAL mode silently omitted
+    transactions still in the write-ahead log — the same fault found in
+    deploy/backup.sh, where a restore test recovered 13 of 16 heats. Both now
+    go through the one engine, which uses SQLite's online backup API.
+    """
+    r = BK.create_snapshot(db, reason=f"manual · {user.name}")
+    if not r.get("ok"):
+        raise HTTPException(400, r.get("error", "Backup failed"))
+    BK.prune()
+    audit(db, user, "admin", "backup_created", detail=r["filename"])
+    L.notify(db, "Database backup created",
+             f"{r['filename']} · by {user.name}"
+             + (" · encrypted" if r.get("encrypted") else ""), kind="system")
     db.commit()
-    shutil.copy2(src, dst)
-    audit(db, user, "admin", "backup_created", detail=fname)
-    L.notify(db, "Database backup created", f"{fname} · by {user.name}", kind="system")
-    db.commit()
-    return {"ok": True, "filename": fname}
+    return r
 
 
 @router.get("/backup/list")
 def backups(user: M.User = Depends(require_perm("admin"))):
-    files = sorted(os.listdir(BACKUP_DIR), reverse=True)
-    return [{"filename": f,
-             "size_kb": round(os.path.getsize(os.path.join(BACKUP_DIR, f)) / 1024, 1)}
-            for f in files]
+    return [{"filename": s["filename"], "size_kb": round(s["bytes"] / 1024, 1),
+             "at": s["at"], "encrypted": s["encrypted"]}
+            for s in BK.list_snapshots()]
+
+
+@router.get("/backup/status")
+def backup_status(user: M.User = Depends(require_perm("admin")),
+                  db: DBSession = Depends(get_db)):
+    """Drives the 7-day 'save a copy off the server' reminder and the
+    failsafe banner. Read-only — it never restores anything by itself."""
+    return {"reminder": BK.download_reminder(db),
+            "recovery": BK.recovery_check(db),
+            "auto_every_days": BK.AUTO_BACKUP_EVERY_DAYS,
+            "encryption_on": bool(os.environ.get("SMS2_BACKUP_PASSPHRASE"))}
+
+
+@router.post("/backup/restore")
+async def restore_backup(file: UploadFile = File(...),
+                         reauth_password: str = Form(...),
+                         passphrase: str = Form(""),
+                         user: M.User = Depends(require_perm("admin")),
+                         db: DBSession = Depends(get_db)):
+    """Replace the live database from an uploaded snapshot.
+
+    This is the most destructive operation in SMS-2 — it discards every record
+    created since the snapshot — so it carries the strictest gate in the
+    system:
+
+      · Administrator-class only (`require_perm("admin")`). It is deliberately
+        NOT available to operators or engineers: a full restore can erase
+        locked heats and rewrite the audit trail, which no production role
+        should be able to do.
+      · Password re-authentication, like every other critical operation.
+      · The upload is VALIDATED as a real SMS-2 database before anything is
+        touched — right tables, readable, integrity check passes.
+      · The current database is snapshotted first, so a mistaken restore is
+        itself reversible.
+
+    Provided because on a hosted deployment there is no shell: Admin → Backup
+    is the only recovery path. On a plant server prefer deploy/restore.sh with
+    the service stopped.
+    """
+    _reauth(db, user, reauth_password)
+    src = BK.sqlite_path()
+    if not src:
+        raise HTTPException(400, "PostgreSQL deployment — restore with psql on the server.")
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "Empty file.")
+
+    tmp_dir = os.path.join(DATA_DIR, "_restore_tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
+    staged = os.path.join(tmp_dir, "upload.bin")
+    with open(staged, "wb") as fh:
+        fh.write(raw)
+
+    try:
+        candidate = staged
+        # Encrypted snapshot: decrypt with the supplied passphrase.
+        if file.filename.endswith(".enc") or raw[:8] == b"Salted__":
+            if not passphrase:
+                raise HTTPException(400, "That backup is encrypted — enter its passphrase.")
+            if not shutil.which("openssl"):
+                raise HTTPException(400, "openssl is not available on the server to decrypt.")
+            dec = os.path.join(tmp_dir, "decrypted.db")
+            import subprocess
+            proc = subprocess.run(
+                ["openssl", "enc", "-d", "-aes-256-cbc", "-pbkdf2", "-iter", "200000",
+                 "-pass", "env:SMS2_RESTORE_PASS", "-in", staged, "-out", dec],
+                capture_output=True, env={**os.environ, "SMS2_RESTORE_PASS": passphrase})
+            if proc.returncode != 0:
+                raise HTTPException(400, "Could not decrypt — wrong passphrase, or the file is damaged. Nothing was changed.")
+            candidate = dec
+
+        # Validate BEFORE touching the live database.
+        try:
+            c = sqlite3.connect(candidate)
+            if c.execute("PRAGMA integrity_check;").fetchone()[0] != "ok":
+                raise ValueError("integrity check failed")
+            tables = {r[0] for r in c.execute(
+                "SELECT name FROM sqlite_master WHERE type='table';")}
+            missing = {"heats", "users", "roles", "audit_log"} - tables
+            if missing:
+                raise ValueError(f"not an SMS-2 database (missing {', '.join(sorted(missing))})")
+            heats = c.execute("SELECT COUNT(*) FROM heats;").fetchone()[0]
+            users_n = c.execute("SELECT COUNT(*) FROM users;").fetchone()[0]
+            c.close()
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(400, f"Rejected: {e}. Nothing was changed.")
+
+        # Snapshot the CURRENT database so this restore is reversible.
+        safety = BK.create_snapshot(db, reason=f"pre-restore · {user.name}")
+
+        # Release pooled connections, then copy the validated image in.
+        from ..core.database import engine as _engine
+        _engine.dispose()
+        s = sqlite3.connect(candidate)
+        d = sqlite3.connect(src)
+        with d:
+            s.backup(d)
+        d.close()
+        s.close()
+        for side in ("-wal", "-shm"):
+            try:
+                os.remove(src + side)
+            except OSError:
+                pass
+
+        audit(db, user, "admin", "database_restored",
+              detail=f"{file.filename} · {heats} heats, {users_n} users restored")
+        db.commit()
+        return {"ok": True, "heats": heats, "users": users_n,
+                "safety_copy": safety.get("filename"),
+                "note": "Sign out and back in — your session predates the restored data."}
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 @router.get("/backup/{fname}/download")
-def download_backup(fname: str, user: M.User = Depends(require_perm("admin"))):
+def download_backup(fname: str, user: M.User = Depends(require_perm("admin")),
+                    db: DBSession = Depends(get_db)):
     path = os.path.join(BACKUP_DIR, os.path.basename(fname))
     if not os.path.exists(path):
         raise HTTPException(404, "Backup not found")
+    # Taking a copy off the server is what resets the 7-day reminder.
+    BK.mark_downloaded(db)
+    audit(db, user, "admin", "backup_downloaded", detail=os.path.basename(path))
+    db.commit()
     return FileResponse(path, filename=os.path.basename(path))
 
 

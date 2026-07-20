@@ -2858,25 +2858,175 @@ async function adminSettings(body) {
 
 async function adminBackup(body) {
   const render = async () => {
-    const list = await GET("/api/admin/backup/list");
+    const [list, st] = await Promise.all([
+      GET("/api/admin/backup/list"),
+      GET("/api/admin/backup/status").catch(() => null),
+    ]);
+
+    // ── Failsafe banner ──────────────────────────────────────────────────
+    // Shown when the database is empty but snapshots exist on the server.
+    // It only OFFERS: restoring automatically would overwrite a legitimately
+    // new plant on its first day and hide whatever caused the loss.
+    const rec = st?.recovery;
+    $("#bk-failsafe").innerHTML = rec?.recoverable ? `
+      <div class="finding error bk-alert">
+        <b>recovery</b>
+        <div><b>This database is empty, but ${rec.snapshots} backup(s) are on the server.</b>
+        That usually means the data was lost — a wiped disk, or a fresh deploy on a
+        host that does not keep files. The newest is
+        <span class="mono">${esc(rec.latest.filename)}</span> from ${esc(rec.latest.at)}.
+        Restore it below, or ignore this if the plant genuinely is new.</div>
+      </div>` : "";
+
+    // ── 7-day off-server reminder ────────────────────────────────────────
+    const rem = st?.reminder;
+    $("#bk-remind").innerHTML = rem?.due ? `
+      <div class="finding warning bk-alert">
+        <b>reminder</b>
+        <div><b>Save a copy off this server.</b>
+        ${rem.never ? "No backup has ever been downloaded."
+                    : `The last copy was taken ${rem.days_since} days ago.`}
+        Backups live on the same disk as the database — if that disk dies, both
+        go with it. Download the newest below and keep it somewhere else.
+        SMS-2 asks every ${rem.every_days} days.</div>
+      </div>` : "";
+
     $("#bk-list").innerHTML = list.length ? `
-      <table class="t"><thead><tr><th>Backup file</th><th>Size</th><th></th></tr></thead><tbody>
-      ${list.map(b=>`<tr><td class="mono">${esc(b.filename)}</td><td class="mono">${fmtN(b.size_kb,0)} KB</td>
-        <td><button class="btn small" onclick="download('/api/admin/backup/${esc(b.filename)}/download','${esc(b.filename)}')">⬇</button></td></tr>`).join("")}
+      <table class="t"><thead><tr><th>Backup file</th><th>Taken</th><th class="num">Size</th><th></th><th></th></tr></thead><tbody>
+      ${list.map(b => `<tr>
+        <td class="mono">${esc(b.filename)}${b.encrypted ? ` <span class="tag done">encrypted</span>` : ""}</td>
+        <td class="mono">${esc(b.at || "—")}</td>
+        <td class="num mono">${fmtN(b.size_kb, 0)} KB</td>
+        <td><button class="btn small" onclick="download('/api/admin/backup/${esc(b.filename)}/download','${esc(b.filename)}')">⬇ Save to PC</button></td>
+        <td><button class="btn small" data-restore="${esc(b.filename)}">Restore</button></td>
+      </tr>`).join("")}
       </tbody></table>` : `<div class="empty">No backups yet.</div>`;
+
+    $$("#bk-list [data-restore]").forEach(b =>
+      b.onclick = () => restoreDialog({serverFile: b.dataset.restore}));
   };
+
   body.innerHTML = `
+    <div id="bk-failsafe"></div>
+    <div id="bk-remind"></div>
+
     <div class="card glass">
       <h3>Business continuity — backups</h3>
-      <div class="small muted" style="margin-bottom:10px">On-demand full database snapshot. For scheduled nightly backups and PostgreSQL deployments see <code>deploy/backup.sh</code> and the README. Test restores quarterly.</div>
-      <button class="btn primary" id="bk-go">Create backup now</button>
+      <div class="small muted" style="margin-bottom:var(--sp-3)">
+        A snapshot is taken automatically every 3 days and whenever you ask.
+        Set <code>SMS2_BACKUP_PASSPHRASE</code> on the server and every backup is
+        encrypted (AES-256). Keep at least one copy off this machine — and test a
+        restore now and then, because an untested backup is only a hope.
+      </div>
+      <div class="row">
+        <button class="btn primary" id="bk-go">Create backup now</button>
+        <button class="btn" id="bk-restore-file">⭯ Restore from a file…</button>
+      </div>
       <div id="bk-list" class="sec"></div>
+    </div>
+
+    <div class="card glass sec">
+      <h3>Restore from a file on this computer</h3>
+      <div class="small muted" style="margin-bottom:var(--sp-3)">
+        Drag a backup here — including one you saved on your PC. Encrypted
+        <span class="mono">.enc</span> files are accepted; you will be asked for the
+        passphrase. Nothing is changed until you confirm.
+      </div>
+      <div id="bk-drop" class="bk-drop" tabindex="0" role="button"
+           aria-label="Drop a backup file here, or click to choose one">
+        <span class="bk-drop-icon" aria-hidden="true">⭳</span>
+        <b>Drop a backup file here</b>
+        <span>or click to choose · .db or .db.enc</span>
+      </div>
+      <input type="file" id="bk-file" accept=".db,.enc,.sqlite,.sqlite3" class="hidden">
     </div>`;
+
   $("#bk-go").onclick = async () => {
-    try { const r = await POST("/api/admin/backup"); toast(`Backup created: ${r.filename}`, "ok"); render(); }
-    catch (e) { toast(e.message, "err", 5000); }
+    const b = $("#bk-go"); b.disabled = true;
+    try { const r = await POST("/api/admin/backup");
+      toast(`Backup created: ${r.filename}${r.encrypted ? " (encrypted)" : ""}`, "ok", 3200);
+      render();
+    } catch (e) { toast(e.message, "err", 5000); }
+    b.disabled = false;
   };
+
+  const drop = $("#bk-drop"), input = $("#bk-file");
+  const pick = () => input.click();
+  $("#bk-restore-file").onclick = pick;
+  drop.onclick = pick;
+  drop.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } };
+  input.onchange = () => { if (input.files[0]) restoreDialog({file: input.files[0]}); input.value = ""; };
+  ["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => {
+    e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => {
+    e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", e => {
+    const f = e.dataTransfer?.files?.[0];
+    if (f) restoreDialog({file: f});
+  });
+
+  window.__bkRender = render;
   render();
+}
+
+/* Restore confirmation — the most destructive operation in SMS-2, so it states
+   plainly what will be lost and requires the administrator's own password. */
+function restoreDialog(opts) {
+  const name = opts.file ? opts.file.name : opts.serverFile;
+  const enc = /\.enc$/i.test(name);
+  UI.modal(`
+    <h3>Restore database</h3>
+    <div class="sub">Every heat, approval and audit entry recorded <b>since this
+      backup was taken will be lost</b>. The current database is snapshotted
+      first, so this can be undone.</div>
+    <div class="ca-row"><span>File</span><b class="mono">${esc(name)}</b></div>
+    ${enc ? `<label class="fld"><span>Backup passphrase</span>
+      <input type="password" id="rs-pass" placeholder="the passphrase this backup was encrypted with"></label>` : ""}
+    <label class="fld"><span>Your password *</span>
+      <input type="password" id="rs-auth" placeholder="re-authenticate to confirm"></label>
+    <div class="finding warning"><b>note</b><div>On a plant server prefer
+      <span class="mono">deploy/restore.sh</span> with the service stopped. This
+      in-app path exists for hosted deployments where there is no console.</div></div>
+    <div class="modal-foot">
+      <button class="btn" onclick="UI.closeModal()">Cancel</button>
+      <button class="btn danger" id="rs-go">Restore — overwrite database</button>
+    </div>`, m => {
+    $("#rs-go", m).onclick = async () => {
+      const auth = $("#rs-auth", m).value;
+      if (!auth) { toast("Enter your password to confirm", "err"); return; }
+      const btn = $("#rs-go", m); btn.disabled = true; btn.textContent = "Restoring…";
+      try {
+        let blob = opts.file;
+        if (!blob) {           // restoring one that already lives on the server
+          const r = await fetch(`/api/admin/backup/${encodeURIComponent(opts.serverFile)}/download`,
+                                {headers: {Authorization: "Bearer " + S.token}});
+          if (!r.ok) throw new Error("Could not read that backup from the server");
+          blob = new File([await r.blob()], opts.serverFile);
+        }
+        const fd = new FormData();
+        fd.append("file", blob, name);
+        fd.append("reauth_password", auth);
+        fd.append("passphrase", enc ? ($("#rs-pass", m)?.value || "") : "");
+        const res = await fetch("/api/admin/backup/restore",
+          {method: "POST", headers: {Authorization: "Bearer " + S.token}, body: fd});
+        const out = await res.json();
+        if (!res.ok) throw new Error(out.detail || "Restore failed");
+        UI.closeModal();
+        UI.modal(`
+          <h3>Database restored</h3>
+          <div class="sub">${out.heats} heats and ${out.users} users are back.</div>
+          <div class="ca-row"><span>Safety copy of the previous database</span>
+            <b class="mono">${esc(out.safety_copy || "—")}</b></div>
+          <div class="finding info"><b>next</b><div>${esc(out.note || "")}</div></div>
+          <div class="modal-foot">
+            <button class="btn primary" onclick="UI.closeModal(); doLogout(true)">Sign out</button>
+          </div>`);
+      } catch (e) {
+        toast(e.message, "err", 6000);
+        btn.disabled = false; btn.textContent = "Restore — overwrite database";
+      }
+    };
+  });
 }
 
 /* expose handlers used from inline HTML */
