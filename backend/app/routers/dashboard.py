@@ -256,7 +256,7 @@ def shift_handover(user: M.User = Depends(get_current_user),
 # any plant day, 1–31 day spans. Every module feeds it.
 
 GANTT_MACHINES = [
-    ("HM-BAY", "Hot Metal Bay", ["hot_metal"]),
+    ("HM-BAY", "Hot Metal Bay", ["eaf"]),   # charge window, from the EAF record
     ("EAF-1", "Electric Arc Furnace", ["eaf"]),
     ("ZPF-1", "ZPF", ["zpf"]),
     ("LRF-5", "Ladle Refining Furnace 5", ["lrf"]),
@@ -277,13 +277,18 @@ SHUTDOWN_MIN = 60.0
 # only when those are absent (constitution: nothing without a timeline —
 # and the timeline is the plant's, not the keyboard's).
 STAGE_TIME_FIELDS = {
-    "hot_metal": ("hm_arrival", "hm_charging"),
     "eaf": ("charging_start", "tap_end"),
     "zpf": ("zpf_start", "zpf_end"),
     "lrf": ("lrf_start", "lrf_end"),
     "vd": ("vd_start", "vd_end"),
     "caster": ("cast_start", "cast_end"),
 }
+
+
+# The hot metal bay's occupancy lives inside the EAF record now that charging
+# is an EAF operation. Machine mode still needs it as its own lane: the bay is
+# physically busy from ladle arrival until the charge goes in.
+CHARGE_TIME_FIELDS = ("hm_arrival", "hm_charging")
 
 
 def _proc_dt(v):
@@ -298,8 +303,6 @@ def _proc_dt(v):
 
 def _machine_for(stage: str, heat: M.Heat, data: dict | None = None) -> str | None:
     data = data or {}
-    if stage == "hot_metal":
-        return "HM-BAY"
     if stage == "eaf":
         return "EAF-1"
     if stage == "zpf":
@@ -329,7 +332,7 @@ def _collect_window(db, w0, w1, now_at, include_locked=True):
     picked = []
     for h in heats:
         recs = db.query(M.StageRecord).filter_by(heat_id=h.id).all()
-        bars = []
+        bars = []; charge_bars = []
         for r in recs:
             if not r.started_at:
                 continue
@@ -364,6 +367,20 @@ def _collect_window(db, w0, w1, now_at, include_locked=True):
                 bar["billet_t"] = float(d.get("billet_weight") or 0)
                 bar["ltc"] = d.get("ltc_no")
             bars.append(bar)
+            # Charge window → HM-BAY lane. Kept OUT of `bars` so heat, shift
+            # and production modes still see exactly one EAF bar per heat;
+            # only the machine board consumes it.
+            if r.stage == "eaf":
+                c0 = _proc_dt(d.get(CHARGE_TIME_FIELDS[0]))
+                c1 = _proc_dt(d.get(CHARGE_TIME_FIELDS[1]))
+                if c0 and c1 and c1 >= c0 and not (c1 < w0 or c0 > w1):
+                    charge_bars.append({**bar, "machine": "HM-BAY",
+                                        "kind": "charge",
+                                        "title": "Hot Metal Charge",
+                                        "start": max(c0, w0).isoformat(sep=" "),
+                                        "end": min(c1, w1).isoformat(sep=" "),
+                                        "live": False, "done": bar["done"],
+                                        "shift_at_start": plant_time.resolve(max(c0, w0)).shift})
         if not bars or (h.status == "locked" and not include_locked):
             continue
         bars.sort(key=lambda b: b["start"])
@@ -397,7 +414,8 @@ def _collect_window(db, w0, w1, now_at, include_locked=True):
                            "kind": e.kind, "stage": e.stage,
                            "machine": _machine_for(e.stage, h, rec_d) if e.stage else None,
                            "detail": (e.detail or "")[:140]})
-        picked.append({"heat": h, "bars": bars, "delays": delays, "events": events})
+        picked.append({"heat": h, "bars": bars, "charge_bars": charge_bars,
+                       "delays": delays, "events": events})
     return picked
 
 
@@ -425,7 +443,8 @@ def smart_gantt(mode: str = "heat", span: str = "day", plant_day: str | None = N
     rows = []
     if mode == "machine":
         for code, label, _stages in GANTT_MACHINES:
-            bars = [b for p in picked for b in p["bars"] if b["machine"] == code]
+            bars = [b for p in picked
+                    for b in p["bars"] + p["charge_bars"] if b["machine"] == code]
             # LTC lanes: represented by casting windows of heats that used the car
             if code.startswith("LTC"):
                 bars = [dict(b, title=f"{b['title']} transfer") for p in picked
@@ -533,7 +552,8 @@ def machine_board(user: M.User = Depends(get_current_user),
 
     board = []
     for code, label, _stages in GANTT_MACHINES:
-        bars = [b for p in picked for b in p["bars"] if b["machine"] == code]
+        bars = [b for p in picked
+                for b in p["bars"] + p["charge_bars"] if b["machine"] == code]
         delays = [d for p in picked for d in p["delays"] if d["machine"] == code]
         open_delay = next((d for d in delays if d["open"]), None)
         live = next((b for b in bars if b["live"]), None)

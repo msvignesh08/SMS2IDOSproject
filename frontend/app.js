@@ -156,7 +156,31 @@ const can = p => perms().includes(p) || perms().includes("admin");
 const isAdmin = () => S.user?.role === "Administrator";
 
 /* ───────────────────────── boot / auth ───────────────────────── */
+/* Charging is now recorded on the EAF stage. Any unsaved local draft still
+   filed under the retired "hot_metal" key is folded into that heat's EAF
+   draft — an operator's typing is never silently dropped, and the logout
+   safety check stops warning about a draft nothing can open. */
+function migrateChargeDrafts() {
+  const stale = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith("sms2_draft_") && k.endsWith("_hot_metal")) stale.push(k);
+  }
+  stale.forEach(k => {
+    const target = k.replace(/_hot_metal$/, "_eaf");
+    try {
+      const old = JSON.parse(localStorage.getItem(k) || "{}");
+      if (Object.keys(old).length) {
+        const cur = JSON.parse(localStorage.getItem(target) || "{}");
+        localStorage.setItem(target, JSON.stringify({ ...old, ...cur }));  // newer EAF entry wins
+      }
+    } catch {}
+    localStorage.removeItem(k);
+  });
+}
+
 async function boot() {
+  migrateChargeDrafts();
   // Defensive wiring: a control room must come up even if one control is
   // missing (stale cache, partial deploy). Each listener attaches
   // independently; a failure is logged, never fatal.
@@ -1233,7 +1257,7 @@ function renderSmartGantt(g) {
     const bars = r.bars.map(b => {
       const l = pct(b.start), w = Math.max(pct(b.end) - l, 0.8);
       const label = g.mode === "heat" ? b.title : (b.title && g.mode === "production" ? b.title : b.heat_no);
-      return `<div class="sg-bar ${b.live ? "live" : ""}" data-stage="${b.stage}"
+      return `<div class="sg-bar ${b.live ? "live" : ""}" data-stage="${b.kind || b.stage}"
         style="left:${l}%;width:${w}%"
         data-tip="<b>${esc(b.heat_no)} — ${esc(b.title)}</b>${esc(b.grade)}${b.route ? " · " + b.route : ""}${b.machine ? " · " + b.machine : ""}<br>${b.start.slice(5, 16)} → ${b.live ? "running" : b.end.slice(11, 16)}${b.done ? " · submitted ✓" : b.live ? " · LIVE" : ""}${b.billet_t ? "<br>" + b.billet_t + " t billets" : ""}"
         onclick="location.hash='#/heat/${b.heat_no}/${b.stage}'">${esc(label)}</div>`;
@@ -2153,7 +2177,7 @@ async function viewHeats() {
     <div class="filter-bar card glass" style="margin-bottom:var(--sp-3)">
       <label class="fld"><span>Status</span>
         <select id="hf-status"><option value="">all</option>
-          ${["hot_metal","eaf","zpf","lrf","vd","caster","quality","review","locked","aborted"]
+          ${["eaf","zpf","lrf","vd","caster","quality","review","locked","aborted"]
             .map(s=>`<option>${s}</option>`).join("")}</select></label>
       <label class="fld"><span>Shift</span>
         <select id="hf-shift"><option value="">all</option><option>A</option><option>B</option><option>C</option></select></label>
@@ -2327,7 +2351,7 @@ async function viewSearch(qInit) {
       <label class="fld wide"><span>Search</span>
         <input id="se-q" placeholder="e.g. E260151, crane, Fe500D, breakout…" value="${esc(qInit||"")}"></label>
       <label class="fld"><span>Status</span><select id="se-status"><option value="">any</option>
-        ${["hot_metal","eaf","zpf","lrf","vd","caster","quality","review","locked","aborted"].map(s=>`<option>${s}</option>`).join("")}</select></label>
+        ${["eaf","zpf","lrf","vd","caster","quality","review","locked","aborted"].map(s=>`<option>${s}</option>`).join("")}</select></label>
       <label class="fld"><span>Shift</span><select id="se-shift"><option value="">any</option><option>A</option><option>B</option><option>C</option></select></label>
       <label class="fld"><span>Route</span><select id="se-route"><option value="">any</option><option>VD-2</option><option>VD-3</option><option>BC-2</option><option>BC-3</option></select></label>
       <label class="fld"><span>Plant day</span><input type="date" id="se-day"></label>

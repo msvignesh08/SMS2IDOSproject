@@ -1,7 +1,7 @@
 """
 SMS-2 IDOS — STAGE FRAMEWORK CONFIGURATION
 ===========================================
-All eight production modules (Sections 6A–6H) expressed as configuration
+All production modules (Sections 6A–6H) expressed as configuration
 consumed by ONE engine (Configuration over Coding — LAW-5; Consistent
 Design — 3.10). Adding a field is a config edit, not a schema change.
 
@@ -19,18 +19,20 @@ def F(key, label, type="number", req=False, auto=False, options=None, unit="", s
             "auto": auto, "options": options or [], "unit": unit, "step": step}
 
 STAGE_DEFS = {
-    # ── MODULE 1 — HOT METAL & SCRAP (6A) ─────────────────────────────
-    "hot_metal": {
-        # CHARGE MIX — hot metal and scrap were two separate sections; the
-        # plant logbook treats them as one charge, so they are merged here.
-        # The stage KEY stays "hot_metal" on purpose: it is referenced by the
-        # stage sequence, the gates, the Gantt machine map (HM-BAY), existing
-        # records and the smoke suite. Renaming the key would orphan every
-        # heat already in the database; only the title and tiles change.
-        "title": "Charge Mix",
-        "icon": "🔥",
+    # ── MODULE 1 — ELECTRIC ARC FURNACE (6A charge mix + 6B furnace) ──
+    # Charging and melting are one operation on one machine, recorded on one
+    # sheet — so they are one stage.
+    "eaf": {
+        "title": "Electric Arc Furnace",
+        "icon": "⚡",
         "authorized": ["Operator", "Shift Engineer", "Shift Incharge", "Administrator"],
         "tiles": [
+            # ── CHARGE MIX (merged in from the former Hot Metal & Scrap stage)
+            # A plant charges hot metal and scrap INTO the furnace: charging is
+            # the first operation of the EAF cycle, not a separate module. The
+            # shop-floor sheet carries charge and EAF columns on ONE row, so
+            # they now live in one stage. Chemistry below takes both samples —
+            # record one labelled "Hot Metal" and one "EAF Bath".
             {"key": "general", "label": "General Information", "icon": "🟦", "fields": [
                 F("blast_furnace", "Blast Furnace", "select", req=True, options=["BF-1", "BF-2"]),
                 F("ladle_no", "Ladle Number", "select", req=True,
@@ -38,41 +40,23 @@ STAGE_DEFS = {
                 F("furnace_campaign", "F/C — Furnace Campaign"),
                 F("lead_seq", "Lead Sequence"),
             ]},
-            # One charge, one tile: hot metal and the scrap mix together.
             {"key": "charge_mix", "label": "Charge Mix", "icon": "⚖", "fields": [
                 F("hm_weight", "Hot Metal Weight", req=True, unit="t"),
                 F("hm_temp", "Hot Metal Temperature", req=True, unit="°C"),
-                F("hm_arrival", "Arrival Time", "time"),
-                F("hm_charging", "Charging Time", "time", req=True),
+                F("hm_arrival", "Hot Metal Arrival", "time"),
+                F("hm_charging", "Hot Metal Charging", "time", req=True),
                 F("dri_feed", "DRI Feed", unit="t"),
                 F("hot_heel", "Hot Heel", unit="t"),
-                F("hm_remarks", "Remarks", "textarea"),
+                F("hm_remarks", "Charge Remarks", "textarea"),
             ]},
-            {"key": "chemistry", "label": "Chemistry", "icon": "🧪",
-             "chemistry": {"label": "Hot Metal", "elements": CHEM_BASE, "required": True}},
-            # Bundle, pig iron, skull, internal return and DRI are MATERIALS,
-            # not fields — they are picked from masters with a quantity, so new
-            # scrap types can be added in Admin without a code change.
             {"key": "scrap", "label": "Scrap & Charge Materials", "icon": "🧲",
              "materials": {"category": "scrap", "label": "Charge Mix Additions"}},
-            {"key": "summary", "label": "Charge Summary", "icon": "📊", "fields": [
+            {"key": "charge_summary", "label": "Charge Summary", "icon": "📊", "fields": [
                 F("total_scrap", "Total Scrap Weight", auto=True, unit="t"),
                 F("total_charge", "Total Charge Weight", auto=True, unit="t"),
                 F("hm_pct", "Hot Metal %", auto=True, unit="%"),
                 F("dri_pct", "DRI %", auto=True, unit="%"),
             ]},
-            {"key": "remarks", "label": "Remarks", "icon": "📝", "fields": [
-                F("stage_remarks", "Stage Remarks", "textarea"),
-            ]},
-        ],
-    },
-
-    # ── MODULE 2 — ELECTRIC ARC FURNACE (6B) ──────────────────────────
-    "eaf": {
-        "title": "Electric Arc Furnace",
-        "icon": "⚡",
-        "authorized": ["Operator", "Shift Engineer", "Shift Incharge", "Administrator"],
-        "tiles": [
             {"key": "charging", "label": "Charging Information", "icon": "🟦", "fields": [
                 F("charging_start", "Charging Start Time", "time", req=True),
                 F("charging_end", "Charging End Time", "time", req=True),
@@ -105,7 +89,7 @@ STAGE_DEFS = {
             ]},
             {"key": "flux", "label": "Flux & Additions", "icon": "🧱",
              "materials": {"category": "flux", "label": "Flux & Carbon Additions"}},
-            {"key": "chemistry", "label": "Temperature & Chemistry", "icon": "🧪",
+            {"key": "chemistry", "label": "Chemistry — Hot Metal & Bath", "icon": "🧪",
              "chemistry": {"label": "EAF Bath", "elements": CHEM_BASE, "required": True},
              "fields": [
                 F("bath_temp", "Bath Temperature", req=True, unit="°C"),
@@ -364,7 +348,7 @@ def required_stages(route: str | None, refining: str | None = None,
     ZPF is included ONLY when the post-EAF decision selected it (or legacy
     data already exists). VD is included ONLY on a VD route. Nothing is
     forced — two heats of the same grade may take different paths."""
-    base = ["hot_metal", "eaf"]
+    base = ["eaf"]
     if refining == "ZPF" or has_zpf_data:
         base.append("zpf")
     base.append("lrf")

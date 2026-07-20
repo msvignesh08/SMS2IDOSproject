@@ -3,7 +3,7 @@ SMS-2 IDOS — HEAT LIFECYCLE ENGINE (Section 5)
 ===============================================
 The frozen production state machine:
 
-  created → hot_metal → eaf → zpf → lrf → [route decision]
+  created → eaf (charge mix + furnace) → zpf → lrf → [route decision]
           → (vd) → caster → quality → review → LOCKED
 
 Gating is computed, never hardcoded navigation (5.8: only required modules
@@ -78,13 +78,13 @@ def create_heat(db: Session, user: M.User, grade_id: int, heat_no: str | None,
     else:
         heat_no = next_heat_no(db)
     m = plant_time.now_moment()
-    heat = M.Heat(heat_no=heat_no, grade_id=grade_id, status="hot_metal",
+    heat = M.Heat(heat_no=heat_no, grade_id=grade_id, status="eaf",
                   plant_day=m.plant_day, shift=m.shift,
                   shift_engineer=shift_engineer, created_by=user.id,
                   is_training=is_training)
     db.add(heat); db.flush()
     # Pre-create the always-required stage rows (VD added on route selection)
-    for st in ["hot_metal", "eaf", "zpf", "lrf", "caster", "quality", "review"]:
+    for st in ["eaf", "zpf", "lrf", "caster", "quality", "review"]:
         db.add(M.StageRecord(heat_id=heat.id, stage=st,
                              plant_day=m.plant_day, shift=m.shift))
     emit(db, heat, "created", user,
@@ -94,7 +94,7 @@ def create_heat(db: Session, user: M.User, grade_id: int, heat_no: str | None,
     return heat
 
 
-STAGE_SEQUENCE = ["hot_metal", "eaf", "zpf", "lrf", "vd", "caster", "quality", "review"]
+STAGE_SEQUENCE = ["eaf", "zpf", "lrf", "vd", "caster", "quality", "review"]
 
 
 def stage_gates(db: Session, heat: M.Heat) -> dict:
@@ -222,7 +222,8 @@ def submit_stage(db: Session, heat: M.Heat, stage: str, user: M.User) -> list[di
     rec = db.query(M.StageRecord).filter_by(heat_id=heat.id, stage=stage).first()
     chem = [ {"values": c.values, "superseded": c.superseded}
              for c in db.query(M.ChemistrySample).filter_by(heat_id=heat.id, stage=stage)]
-    mats = [ {"quantity": a.quantity, "superseded": a.superseded}
+    mats = [ {"quantity": a.quantity, "category": a.material.category,
+              "superseded": a.superseded}
              for a in db.query(M.MaterialAddition).filter_by(heat_id=heat.id, stage=stage)]
     dels = [ {"end_time": d.end_time, "reason_id": d.reason_id, "superseded": d.superseded}
              for d in db.query(M.Delay).filter_by(heat_id=heat.id, stage=stage)]

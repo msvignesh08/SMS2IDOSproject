@@ -43,37 +43,37 @@ print(f"MASTERS OK — {len(masters['grades'])} grades, {len(masters['materials'
 h = call("POST", "/api/heats", {"grade_id": grade["id"], "shift_engineer": "R. Sharma"}, token=t_se)
 HN = h["heat_no"]
 print("HEAT CREATED:", HN, "| gates:", {k: v["state"] for k, v in h["gates"].items()})
-assert h["gates"]["hot_metal"]["state"] == "open"
-assert h["gates"]["eaf"]["state"] == "locked", "EAF must be gated until Hot Metal submits (5.2)"
+assert h["gates"]["eaf"]["state"] == "open"
+assert h["gates"]["caster"]["state"] == "locked", "Caster must be gated until upstream submits (5.2)"
 
 dup = call("POST", "/api/heats", {"grade_id": grade["id"], "heat_no": HN}, token=t_se, expect_ok=False)
 assert dup["__status"] == 400, "duplicate heat number must be prevented (5.3)"
 print("DUPLICATE HEAT PREVENTED OK")
 
 # ── premature submit must fail validation
-r = call("POST", f"/api/heats/{HN}/stages/hot_metal/submit", token=t_op)
+r = call("POST", f"/api/heats/{HN}/stages/eaf/submit", token=t_op)
 assert r["ok"] is False and any(f["level"] == "error" for f in r["findings"])
 print("VALIDATION BLOCKS EMPTY SUBMIT OK —", len(r["findings"]), "findings")
 
-# ── hot metal
-call("PUT", f"/api/heats/{HN}/stages/hot_metal", {"data": {
+# ── charge mix — the hot metal and scrap charged INTO the furnace, recorded
+#    on the EAF stage alongside the furnace operation itself.
+call("PUT", f"/api/heats/{HN}/stages/eaf", {"data": {
     "blast_furnace": "BF-1", "ladle_no": "7", "hm_weight": 92.5, "hm_temp": 1350,
     "hm_arrival": "2026-07-16T06:20", "hm_charging": "2026-07-16T06:45",
     "stage_remarks": "Normal ladle condition."}}, token=t_op)
-call("POST", f"/api/heats/{HN}/stages/hot_metal/chemistry",
+call("POST", f"/api/heats/{HN}/stages/eaf/chemistry",
      {"label": "Hot Metal", "values": {"C": 4.2, "Si": 0.65, "Mn": 0.4, "S": 0.045, "P": 0.11, "Ti": 0.05}}, token=t_op)
-call("POST", f"/api/heats/{HN}/stages/hot_metal/materials",
+call("POST", f"/api/heats/{HN}/stages/eaf/materials",
      {"material_id": mat["HSC"]["id"], "quantity": 12.0, "remarks": "2 boxes"}, token=t_op)
-call("POST", f"/api/heats/{HN}/stages/hot_metal/materials",
+call("POST", f"/api/heats/{HN}/stages/eaf/materials",
      {"material_id": mat["DRI"]["id"], "quantity": 8.0}, token=t_op)
-st = call("GET", f"/api/heats/{HN}/stages/hot_metal", token=t_op)
+st = call("GET", f"/api/heats/{HN}/stages/eaf", token=t_op)
 assert st["data"]["total_charge"] == 112.5, f"auto charge calc wrong: {st['data']}"
-print("HOT METAL AUTO-CALC OK — total charge", st["data"]["total_charge"], "t")
-r = call("POST", f"/api/heats/{HN}/stages/hot_metal/submit", token=t_op)
-assert r["ok"], r
-print("HOT METAL SUBMITTED — EAF gate:", r["heat"]["gates"]["eaf"]["state"])
+assert st["data"]["hm_pct"] == 82.2, f"HM% wrong: {st['data']}"
+print("CHARGE MIX AUTO-CALC OK — total charge", st["data"]["total_charge"],
+      "t |", st["data"]["hm_pct"], "% HM")
 
-# ── EAF (with chronology violation test: tap before charging end)
+# ── EAF furnace operation (with chronology test: tap before charging end)
 call("PUT", f"/api/heats/{HN}/stages/eaf", {"data": {
     "charging_start": "2026-07-16T06:50", "charging_end": "2026-07-16T07:30",
     "power_on": "2026-07-16T06:55", "power_off": "2026-07-16T08:10",
@@ -86,6 +86,14 @@ r = call("POST", f"/api/heats/{HN}/stages/eaf/submit", token=t_op)
 assert not r["ok"] and any("Tapping cannot begin" in f["message"] for f in r["findings"]), r
 print("CHRONOLOGY RULE ENFORCED OK (tap before charging end blocked, 6B.16)")
 call("PUT", f"/api/heats/{HN}/stages/eaf", {"data": {"tap_start": "2026-07-16T08:15"}}, token=t_op)
+# Flux is charged at the same stage but is not metallic charge: the scrap
+# total must ignore it, or every heat's HM% silently drifts.
+call("POST", f"/api/heats/{HN}/stages/eaf/materials",
+     {"material_id": mat["LIME"]["id"], "quantity": 3.0}, token=t_op)
+st2 = call("GET", f"/api/heats/{HN}/stages/eaf", token=t_op)
+assert st2["data"]["total_scrap"] == 20.0, f"flux leaked into scrap total: {st2['data']}"
+assert st2["data"]["total_charge"] == 112.5, f"flux leaked into charge total: {st2['data']}"
+print("CHARGE/FLUX SEPARATION OK — 3 t lime ignored by the metallic charge total")
 r = call("POST", f"/api/heats/{HN}/stages/eaf/submit", token=t_op)
 assert r["ok"], r
 # THE PROCESS ROUTE LAW: post-EAF decision — this heat goes via ZPF
@@ -379,9 +387,9 @@ print("GRADE ENTRY OK — IS2062 created at entry, searchable, reused case-insen
 
 # PRODUCTION SYNCHRONIZATION ENGINE: stale save returns full conflict payload
 HN2 = h2["heat_no"]
-s1 = call("PUT", f"/api/heats/{HN2}/stages/hot_metal",
+s1 = call("PUT", f"/api/heats/{HN2}/stages/eaf",
           {"data": {"hm_ladle_no": "LD-01"}, "version": 1}, token=t_se)
-conflict = call("PUT", f"/api/heats/{HN2}/stages/hot_metal",
+conflict = call("PUT", f"/api/heats/{HN2}/stages/eaf",
                 {"data": {"hm_ladle_no": "LD-02"}, "version": 1}, token=t_op, expect_ok=False)
 assert conflict["__status"] == 409, conflict
 det = conflict["detail"]
@@ -403,9 +411,9 @@ _ur.urlopen(_rq).read()
 n_se = call("GET", "/api/notifications", token=t_se)["items"]
 assert any(n["kind"] == "report" for n in n_se), [n["kind"] for n in n_se][:10]
 # a ≥30-min delay raises a mandatory 'delay' notification
-call("PUT", f"/api/heats/{HN2}/stages/hot_metal",
+call("PUT", f"/api/heats/{HN2}/stages/eaf",
      {"data": {"hm_ladle_no": "LD-03"}}, token=t_se)   # versionless save (draft merge)
-call("POST", f"/api/heats/{HN2}/stages/hot_metal/delays",
+call("POST", f"/api/heats/{HN2}/stages/eaf/delays",
      {"start_time": "2026-07-17T06:00", "end_time": "2026-07-17T06:45",
       "reason_id": dr["id"], "remarks": "HM crane breakdown"}, token=t_se)
 # operator disabled 'report' → filtered out; delay notifications still visible (mandatory)
@@ -486,12 +494,11 @@ hb = call("POST", "/api/heats", {"grade_code": "Fe500D", "shift_engineer": "R. K
 HB = hb["heat_no"]
 assert hb["route_refining"] is None
 assert hb["gates"]["zpf"]["state"] == "awaiting_route", hb["gates"]["zpf"]
-call("PUT", f"/api/heats/{HB}/stages/hot_metal", {"data": {
+call("PUT", f"/api/heats/{HB}/stages/eaf", {"data": {
     "blast_furnace": "BF-2", "ladle_no": "9", "hm_weight": 90.0, "hm_temp": 1345,
     "hm_arrival": "2026-07-17T06:20", "hm_charging": "2026-07-17T06:45"}}, token=t_se)
-call("POST", f"/api/heats/{HB}/stages/hot_metal/chemistry",
+call("POST", f"/api/heats/{HB}/stages/eaf/chemistry",
      {"label": "Hot Metal", "values": {"C": 4.3, "Si": 0.6, "Mn": 0.4, "S": 0.04, "P": 0.1, "Ti": 0.05}}, token=t_se)
-assert call("POST", f"/api/heats/{HB}/stages/hot_metal/submit", token=t_se)["ok"]
 call("PUT", f"/api/heats/{HB}/stages/eaf", {"data": {
     "charging_start": "2026-07-17T06:50", "charging_end": "2026-07-17T07:30",
     "power_on": "2026-07-17T06:55", "power_off": "2026-07-17T08:10",
@@ -524,12 +531,11 @@ assert rr["__status"] == 423, rr
 # re-routing away from recorded ZPF data is refused (No-Delete integrity)
 hc = call("POST", "/api/heats", {"grade_code": "Fe500D"}, token=t_se)
 HC = hc["heat_no"]
-call("PUT", f"/api/heats/{HC}/stages/hot_metal", {"data": {
+call("PUT", f"/api/heats/{HC}/stages/eaf", {"data": {
     "blast_furnace": "BF-1", "ladle_no": "4", "hm_weight": 91.0, "hm_temp": 1348,
     "hm_arrival": "2026-07-17T14:20", "hm_charging": "2026-07-17T14:45"}}, token=t_se)
-call("POST", f"/api/heats/{HC}/stages/hot_metal/chemistry",
+call("POST", f"/api/heats/{HC}/stages/eaf/chemistry",
      {"label": "Hot Metal", "values": {"C": 4.2, "Si": 0.6, "Mn": 0.4, "S": 0.04, "P": 0.1, "Ti": 0.05}}, token=t_se)
-call("POST", f"/api/heats/{HC}/stages/hot_metal/submit", token=t_se)
 call("PUT", f"/api/heats/{HC}/stages/eaf", {"data": {
     "charging_start": "2026-07-17T14:50", "charging_end": "2026-07-17T15:30",
     "power_on": "2026-07-17T14:55", "power_off": "2026-07-17T16:10",

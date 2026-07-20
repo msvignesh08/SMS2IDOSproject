@@ -84,7 +84,7 @@
      re-declared all eleven swatches as hardcoded gradients in a JS template
      string, guaranteeing the two would drift apart the first time a colour
      was tuned. Both now read from these. */
-  --st-hot-metal:linear-gradient(90deg,#FF9A3D,#FF5C3D);
+  --st-charge:linear-gradient(90deg,#FF9A3D,#FF5C3D);   /* HM-BAY charge window */
   --st-eaf:linear-gradient(90deg,#FFC53D,#FF7A3D);
   --st-zpf:linear-gradient(90deg,#FF8A5C,#FF4D7A);
   --st-lrf:linear-gradient(90deg,#B44DFF,#FF4DA6);
@@ -647,7 +647,7 @@ main#view > *{animation:viewin .38s cubic-bezier(.2,.8,.25,1) both}
   box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.55); animation:pulse 1.6s ease-in-out infinite}
 /* stage personalities */
 /* Stage colours come from the tokens so the legend cannot drift from the bars. */
-.sg-bar[data-stage="hot_metal"]{background:var(--st-hot-metal)}
+.sg-bar[data-stage="charge"]{background:var(--st-charge)}
 .sg-bar[data-stage="eaf"]{background:var(--st-eaf)}
 .sg-bar[data-stage="zpf"]{background:var(--st-zpf)}
 .sg-bar[data-stage="lrf"]{background:var(--st-lrf); color:#fff}

@@ -155,7 +155,7 @@ class HeatSeries(Base):
 
 # ───────────────────────────── HEAT (aggregate root) ─────────────────────────────
 
-STAGES = ["hot_metal", "eaf", "zpf", "lrf", "vd", "caster", "quality", "review"]
+STAGES = ["eaf", "zpf", "lrf", "vd", "caster", "quality", "review"]
 
 class Heat(Base):
     __tablename__ = "heats"
@@ -164,7 +164,7 @@ class Heat(Base):
     heat_no = Column(String, unique=True, nullable=False, index=True)
     grade_id = Column(Integer, ForeignKey("steel_grades.id"))
     status = Column(String, default="created", index=True)
-    # created|hot_metal|eaf|zpf|lrf|route_selected|vd|caster|quality|review|locked|aborted
+    # created|eaf|zpf|lrf|route_selected|vd|caster|quality|review|locked|aborted
     route = Column(String, nullable=True)                # VD-2|VD-3|BC-2|BC-3
     route_refining = Column(String, nullable=True)   # ZPF | LRF-5 | LRF-6 (post-EAF decision)
     route_vd = Column(String, nullable=True)             # VD unit if VD route

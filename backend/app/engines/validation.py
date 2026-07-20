@@ -81,8 +81,8 @@ def validate_stage(stage: str, data: dict, chemistry: list[dict],
 
     # 4 — Chronology (6C.14: timings follow chronological order)
     time_pairs = {
-        "hot_metal": [("hm_arrival", "hm_charging", "Arrival must precede charging")],
-        "eaf": [("charging_start", "charging_end", "Charging start/end reversed"),
+        "eaf": [("hm_arrival", "hm_charging", "Hot metal arrival must precede charging"),
+                ("charging_start", "charging_end", "Charging start/end reversed"),
                 ("power_on", "power_off", "Power ON/OFF reversed"),
                 ("charging_end", "tap_start", "Tapping cannot begin before charging is completed"),  # 6B.16
                 ("tap_start", "tap_end", "Tap start/end reversed"),
@@ -117,10 +117,9 @@ def validate_stage(stage: str, data: dict, chemistry: list[dict],
             except (TypeError, ValueError):
                 out.append(finding("error", "Plausibility", f"{label} is not a number."))
 
-    if stage == "hot_metal":
+    if stage == "eaf":
         rng("hm_temp", *HM_TEMP_RANGE, "Hot metal temperature", "°C")
         rng("hm_weight", 1, MAX_HEAT_WEIGHT_T, "Hot metal weight", "t")
-    if stage == "eaf":
         rng("bath_temp", *TEMP_RANGE, "Bath temperature", "°C")
         rng("tap_temp", *TEMP_RANGE, "Tap temperature", "°C")
         rng("tap_weight", 1, MAX_HEAT_WEIGHT_T, "Tap weight", "t")
@@ -153,10 +152,11 @@ def validate_stage(stage: str, data: dict, chemistry: list[dict],
         if dec in ("Rejected", "Hold") and not data.get("defect_category"):
             out.append(finding("warning", "Non-Conformance",
                                "Consider recording non-conformance details for this decision."))
-    if stage == "hot_metal":
-        live_scrap = [m for m in materials if not m.get("superseded")]
+    if stage == "eaf":
+        live_scrap = [m for m in materials
+                      if not m.get("superseded") and m.get("category") == "scrap"]
         if not live_scrap:
-            out.append(finding("warning", "Scrap Details",
+            out.append(finding("warning", "Scrap & Charge Materials",
                                "No scrap materials recorded. Confirm this heat is 100% hot metal."))
     return out
 
@@ -173,8 +173,12 @@ def auto_calculations(stage: str, data: dict, materials: list[dict]) -> dict:
         except ValueError:
             pass  # chronology error already reported by validation
 
-    if stage == "hot_metal":
-        scrap = sum(float(m["quantity"]) for m in materials if not m.get("superseded"))
+    if stage == "eaf":
+        # Charge mix. `materials` for this stage now carries BOTH the charge
+        # additions and the flux/carbon additions, so the scrap total filters
+        # on category — fluxes are not part of the metallic charge.
+        scrap = sum(float(m["quantity"]) for m in materials
+                    if not m.get("superseded") and m.get("category") == "scrap")
         out["total_scrap"] = round(scrap, 2)
         hm = float(data.get("hm_weight") or 0)
         dri = float(data.get("dri_feed") or 0)
@@ -186,7 +190,6 @@ def auto_calculations(stage: str, data: dict, materials: list[dict]) -> dict:
         if total > 0:
             out["hm_pct"] = round(hm / total * 100, 1)
             out["dri_pct"] = round(dri / total * 100, 1)
-    if stage == "eaf":
         dur("power_on", "power_off", "power_on_duration")
         dur("charging_start", "charging_end", "charging_duration")
         dur("tap_start", "tap_end", "tap_duration")

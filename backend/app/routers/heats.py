@@ -163,7 +163,8 @@ def get_stage(heat_no: str, stage: str, user: M.User = Depends(get_current_user)
     data = (rec.data or {}) if rec else {}
     findings = validate_stage(stage, data,
                               [{"values": c.values, "superseded": False} for c in chem],
-                              [{"quantity": m.quantity, "superseded": False} for m in mats],
+                              [{"quantity": m.quantity, "category": m.material.category,
+                                "superseded": False} for m in mats],
                               [{"end_time": d.end_time, "reason_id": d.reason_id,
                                 "superseded": False} for d in dels], specs)
     return {"heat": heat_summary(db, h),
@@ -220,7 +221,8 @@ def save_stage(heat_no: str, stage: str, body: StageSave,
                                                   superseded=False).all()
     merged = dict(rec.data or {}); merged.update(body.data or {})
     merged.update(auto_calculations(stage, merged,
-                                    [{"quantity": m.quantity} for m in mats]))
+                                    [{"quantity": m.quantity, "category": m.material.category}
+                                     for m in mats]))
     rec.data = merged
     if rec.status == "pending":
         rec.status = "in_progress"
@@ -299,8 +301,10 @@ def add_material(heat_no: str, stage: str, body: MatIn,
                                                       superseded=False).all()
         merged = dict(rec.data or {})
         merged.update(auto_calculations(stage, merged,
-                                        [{"quantity": x.quantity} for x in mats]
-                                        + [{"quantity": body.quantity}]))
+                                        [{"quantity": x.quantity,
+                                          "category": x.material.category} for x in mats]
+                                        + [{"quantity": body.quantity,
+                                            "category": mat.category}]))
         rec.data = merged
     db.commit(); return {"ok": True}
 
@@ -644,7 +648,8 @@ def decide_correction(cid: int, body: DecideIn,
     mats = db.query(M.MaterialAddition).filter_by(heat_id=cr.heat_id, stage=cr.stage,
                                                   superseded=False).all()
     merged.update(auto_calculations(cr.stage, merged,
-                                    [{"quantity": x.quantity} for x in mats]))
+                                    [{"quantity": x.quantity,
+                                      "category": x.material.category} for x in mats]))
     rec.data = merged
     rec.version += 1
     cr.status = "approved"

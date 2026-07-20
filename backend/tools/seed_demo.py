@@ -124,7 +124,7 @@ def submit(hn: str, stage: str, token) -> tuple[bool, str]:
 
 
 # ─────────────────────────── stage payloads ───────────────────────────
-def hot_metal_data(base_h: int, weight: float, temp: int):
+def charge_mix_data(base_h: int, weight: float, temp: int):
     return {"blast_furnace": random.choice(["BF-1", "BF-2"]),
             "ladle_no": str(random.randint(1, 15)),
             "hm_weight": weight, "hm_temp": temp,
@@ -174,21 +174,17 @@ def drive_heat(tok, spec, masters, log):
     stop = spec["stop_at"]
     base = spec["base_hour"]
 
-    # ── Hot Metal ──
-    call("PUT", f"/api/heats/{hn}/stages/hot_metal",
-         {"data": hot_metal_data(base, spec["hm_weight"], spec["hm_temp"])}, token=op)
-    call("POST", f"/api/heats/{hn}/stages/hot_metal/chemistry",
+    # ── EAF — charge mix and furnace operation, one stage ──
+    call("PUT", f"/api/heats/{hn}/stages/eaf",
+         {"data": charge_mix_data(base, spec["hm_weight"], spec["hm_temp"])}, token=op)
+    call("POST", f"/api/heats/{hn}/stages/eaf/chemistry",
          {"label": "Hot Metal", "values": CHEM["hot_metal"]()}, token=op)
     for code, qty in (("HSC", round(random.uniform(8, 16), 1)), ("DRI", round(random.uniform(5, 12), 1))):
         if code in mat:
-            call("POST", f"/api/heats/{hn}/stages/hot_metal/materials",
+            call("POST", f"/api/heats/{hn}/stages/eaf/materials",
                  {"material_id": mat[code]["id"], "quantity": qty}, token=op)
-    if stop == "hot_metal":
-        return hn, "in progress · Hot Metal"
-    ok, why = submit(hn, "hot_metal", op)
-    if not ok: return hn, f"blocked at Hot Metal ({why})"
-
-    # ── EAF ──
+    if stop == "charge":
+        return hn, "in progress · Charge Mix"
     call("PUT", f"/api/heats/{hn}/stages/eaf",
          {"data": eaf_data(base, spec["energy"], spec["tap_weight"], spec["tap_temp"])}, token=op)
     call("POST", f"/api/heats/{hn}/stages/eaf/chemistry",
@@ -367,7 +363,7 @@ def build_plan(days: int):
                 "delays": dl,
             })
     # ── Today: live heats parked at every stage, so the Gantt has movement ──
-    live = [("hot_metal", "ZPF", "VD-2"), ("eaf", "LRF-5", "BC-2"), ("route", "LRF-6", "BC-3"),
+    live = [("charge", "ZPF", "VD-2"), ("eaf", "LRF-5", "BC-2"), ("route", "LRF-6", "BC-3"),
             ("zpf", "ZPF", "VD-3"), ("lrf", "LRF-5", "VD-2"), ("caster", "ZPF", "BC-2"),
             ("quality", "LRF-6", "VD-3"), ("review", "ZPF", "BC-3")]
     for n, (stop, refining, route) in enumerate(live):
