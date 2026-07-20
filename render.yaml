@@ -1,0 +1,43 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  SMS-2 IDOS — Render deployment blueprint
+#  ─────────────────────────────────────────────────────────────────────────
+#  SMS-2 is a long-running Python service that serves its own frontend and
+#  writes to a database. That rules out static/serverless hosts such as
+#  Vercel, Netlify or GitHub Pages: they have no always-on process and no
+#  writable disk, so uvicorn cannot stay up and SQLite cannot persist.
+#
+#  Render runs it as an ordinary web service, which is what it needs.
+#  Free tier note: the instance sleeps after ~15 minutes idle and the first
+#  request afterwards takes ~30s to wake it. That is normal, not a fault.
+#
+#  Deploy: push this file, then on Render choose  New → Blueprint  and point
+#  it at the repository. See DEPLOY.md for the click-by-click version.
+# ═══════════════════════════════════════════════════════════════════════════
+services:
+  - type: web
+    name: sms2-idos
+    runtime: python
+    plan: free
+    region: singapore          # nearest region to India; change if you prefer
+    rootDir: backend           # uvicorn is started from here, as it is locally
+    buildCommand: pip install -r requirements.txt
+    # $PORT is supplied by Render. Everything else matches deploy/run.sh.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      # ── DATABASE ─────────────────────────────────────────────────────────
+      # Left unset on purpose, so the app falls back to SQLite and boots with
+      # zero setup — it seeds masters and demo users automatically.
+      #
+      # Render's free disk is EPHEMERAL: the database resets on every deploy
+      # or restart. For a demo that is fine (it re-seeds). For anything you
+      # want to keep, create a free PostgreSQL instance on Render and set:
+      #
+      #   SMS2_DATABASE_URL = <the Internal Database URL Render gives you>
+      #
+      # then add `psycopg2-binary>=2.9` to backend/requirements.txt.
+      # No code changes are needed — config.py already reads this variable.
+      - key: SMS2_DATABASE_URL
+        sync: false            # set it in the Render dashboard when ready
