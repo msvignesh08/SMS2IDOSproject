@@ -52,6 +52,40 @@ variable and `database.py` switches drivers automatically.
 
 ---
 
+## Loading the plant's production history
+
+The real history from the company's workbook ships with the repo as a compact
+bundle (`backend/app/data/history.json.gz`, ~150 KB), so the server never needs
+Excel or `openpyxl`. After the service is up:
+
+1. Open the Render **Shell** for the web service (or SSH to your own server).
+2. `cd backend`
+3. `python tools/seed_history.py`
+
+It loads 667 heats with their consumption, refining, casting and delay records,
+then advances the heat-number series past them so the next heat an operator
+creates cannot collide with a historical one.
+
+- Run it **after** the app has started once — the masters (materials, delay
+  codes, users) must exist first. The seeder checks and refuses rather than
+  writing records that point at nothing.
+- **Safe to re-run.** Heat numbers already present are skipped, never
+  duplicated, so an interrupted deploy just needs the command again.
+- Preview first with `python tools/seed_history.py --dry-run`.
+
+Imported heats are flagged as archived history: they carry no approval
+signatures, and the app does not judge them against current entry rules —
+it says so on screen rather than implying they passed.
+
+**When the plant revises the workbook**, regenerate the bundle on a machine
+that has the file, then commit and redeploy:
+
+```
+python tools/import_history.py "path/to/IDOS.xlsx" --export
+```
+
+---
+
 ## Alternatives
 
 | Host | Notes |
