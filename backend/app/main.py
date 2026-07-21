@@ -92,5 +92,20 @@ def index():
 
 @app.get("/health")
 def health():
+    """Liveness probe, plus the PLANT CLOCK the server is actually running on.
+
+    A deployment can be perfectly healthy and still keep the wrong time: read
+    naively, a host in UTC reports 12:09 while the shop floor is at 17:39, and
+    every heat is then filed against the wrong shift and plant day. Exposing
+    the resolved plant day and shift here makes that visible without signing
+    in, so a bad SMS2_PLANT_TZ is caught by looking rather than by discovering
+    mis-filed heats a week later. Nothing here is sensitive — it is the wall
+    clock and the configured zone, no production data.
+    """
+    from .core import plant_time as pt
+    m = pt.now_moment()
     return {"app": APP_NAME, "version": APP_VERSION, "status": "ok",
-            "motto": APP_MOTTO}
+            "motto": APP_MOTTO,
+            "plant_day": m.plant_day.isoformat(), "shift": m.shift,
+            "plant_time": m.at.isoformat(sep=" "),
+            "plant_tz": pt._TZ_NAME or "server local time"}
