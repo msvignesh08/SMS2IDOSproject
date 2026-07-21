@@ -59,10 +59,17 @@ def notify(db: Session, title: str, body: str = "", kind: str = "production",
         email_critical(db, title, body)
 
 
-def next_heat_no(db: Session) -> str:
-    s = db.query(M.HeatSeries).filter_by(active=True).first()
+def next_heat_no(db: Session, unit: str = "eaf") -> str:
+    """Next number from the series belonging to `unit`'s furnace.
+    The plant numbers EAF heats E… and ZPF heats F…, so the series must be
+    chosen by furnace — taking the first active series would always hand back
+    an E number and silently mis-number every ZPF heat."""
+    s = db.query(M.HeatSeries).filter_by(active=True, unit=unit).first()
     if not s:
-        s = M.HeatSeries(prefix="E", next_number=260001, pad=6)
+        # Legacy databases carry a single series with no unit set.
+        s = db.query(M.HeatSeries).filter_by(active=True).first()
+    if not s:
+        s = M.HeatSeries(prefix="E", next_number=260001, pad=6, unit="eaf")
         db.add(s); db.flush()
     no = f"{s.prefix}{str(s.next_number).zfill(s.pad)}"
     s.next_number += 1
@@ -70,25 +77,34 @@ def next_heat_no(db: Session) -> str:
 
 
 def create_heat(db: Session, user: M.User, grade_id: int, heat_no: str | None,
-                shift_engineer: str, is_training: bool = False) -> M.Heat:
+                shift_engineer: str, is_training: bool = False,
+                entry_stage: str = "eaf") -> M.Heat:
+    entry_stage = entry_stage if entry_stage in ("eaf", "zpf") else "eaf"
     if heat_no:
         heat_no = heat_no.strip().upper()
         if db.query(M.Heat).filter_by(heat_no=heat_no).first():
             raise ValueError(f"Duplicate Heat Number {heat_no} — heat numbers are unique and never reused (5.3).")
     else:
-        heat_no = next_heat_no(db)
+        heat_no = next_heat_no(db, entry_stage)
     m = plant_time.now_moment()
-    heat = M.Heat(heat_no=heat_no, grade_id=grade_id, status="eaf",
+    heat = M.Heat(heat_no=heat_no, grade_id=grade_id, status=entry_stage,
+                  entry_stage=entry_stage,
                   plant_day=m.plant_day, shift=m.shift,
                   shift_engineer=shift_engineer, created_by=user.id,
                   is_training=is_training)
     db.add(heat); db.flush()
-    # Pre-create the always-required stage rows (VD added on route selection)
-    for st in ["eaf", "zpf", "lrf", "caster", "quality", "review"]:
+    # Pre-create the always-required stage rows (VD added on route selection).
+    # The furnace this heat did NOT start in gets no record — a ZPF heat never
+    # sees the EAF, and vice versa.
+    stages = ["eaf", "zpf", "lrf", "caster", "quality", "review"]
+    if entry_stage == "zpf":
+        stages.remove("eaf")
+    for st in stages:
         db.add(M.StageRecord(heat_id=heat.id, stage=st,
                              plant_day=m.plant_day, shift=m.shift))
     emit(db, heat, "created", user,
-         f"Heat {heat_no} created ({'TRAINING' if is_training else 'production'}). "
+         f"Heat {heat_no} created ({'TRAINING' if is_training else 'production'}) "
+         f"in the {'ZPF' if entry_stage == 'zpf' else 'EAF'}. "
          f"Plant Day {m.plant_day}, Shift {m.shift}.")
     audit(db, user, "production", "heat_created", heat_no)
     return heat
@@ -102,10 +118,16 @@ def stage_gates(db: Session, heat: M.Heat) -> dict:
     recs = {r.stage: r for r in db.query(M.StageRecord).filter_by(heat_id=heat.id)}
     zpf_rec = recs.get("zpf")
     has_zpf_data = bool(zpf_rec and (zpf_rec.data or zpf_rec.status in ("submitted", "approved")))
-    req = required_stages(heat.route, heat.route_refining, has_zpf_data)
+    entry = heat.entry_stage or "eaf"
+    req = required_stages(heat.route, heat.route_refining, has_zpf_data, entry)
     gates = {}
     prev_done = True
     for st in STAGE_SEQUENCE:
+        # The furnace this heat did not start in is simply not on its route.
+        if st == "eaf" and entry == "zpf":
+            gates[st] = {"state": "not_in_route",
+                         "reason": "This heat was melted in the ZPF — the Electric Arc Furnace is not part of it."}
+            continue
         if st == "zpf" and st not in req:
             if heat.route_refining is None:
                 gates[st] = {"state": "awaiting_route",
@@ -125,10 +147,17 @@ def stage_gates(db: Session, heat: M.Heat) -> dict:
         if heat.aborted:
             gates[st] = {"state": "aborted", "reason": heat.abort_reason}
         elif st in req and prev_done:
-            if st in ("zpf", "lrf") and heat.route_refining is None and \
-                    recs.get("eaf") is not None and recs["eaf"].status in ("submitted", "approved"):
+            # The route decision hangs off the ENTRY furnace, not off the EAF:
+            # a ZPF heat has no EAF record, so keying on the EAF would leave
+            # its LRF gate open and skip the decision entirely.
+            entry_rec = recs.get(entry)
+            route_pending = (heat.route_refining is None and entry_rec is not None
+                             and entry_rec.status in ("submitted", "approved"))
+            _opts = "ZPF / LRF-5 / LRF-6" if entry == "eaf" else "LRF-5 / LRF-6"
+            if route_pending and (st == "lrf" or (st == "zpf" and entry == "eaf")):
                 gates[st] = {"state": "locked",
-                             "reason": "Where shall this heat go next? Select the process route after EAF (ZPF / LRF-5 / LRF-6)."}
+                             "reason": f"Where shall this heat go next? Select the process route "
+                                       f"after {entry.upper()} ({_opts})."}
             elif st == "caster" and heat.route is None:
                 gates[st] = {"state": "locked", "reason": "Route decision pending at LRF (6D.16)."}
             else:
@@ -144,11 +173,18 @@ def select_refining_route(db: Session, heat: M.Heat, user: M.User, choice: str):
     """THE PROCESS ROUTE LAW — post-EAF decision: where shall this heat go next?
     ZPF · LRF-5 · LRF-6. Selecting an LRF unit bypasses ZPF entirely; ZPF is
     never mandatory and is never displayed as required for such heats."""
+    entry = heat.entry_stage or "eaf"
     if choice not in REFINING_ROUTES:
         raise ValueError(f"Process route must be one of {', '.join(REFINING_ROUTES)}.")
-    eaf = db.query(M.StageRecord).filter_by(heat_id=heat.id, stage="eaf").first()
-    if not eaf or eaf.status not in ("submitted", "approved"):
-        raise ValueError("The post-EAF route decision becomes available once the EAF module is submitted.")
+    # A ZPF-melted heat has already been through the ZPF; its only remaining
+    # refining choice is which Ladle Refining Furnace takes it.
+    if entry == "zpf" and choice == "ZPF":
+        raise ValueError("This heat was melted in the ZPF — it has already been through it. "
+                         "Select the Ladle Refining Furnace: LRF-5 or LRF-6.")
+    entry_rec = db.query(M.StageRecord).filter_by(heat_id=heat.id, stage=entry).first()
+    if not entry_rec or entry_rec.status not in ("submitted", "approved"):
+        raise ValueError(f"The post-{entry.upper()} route decision becomes available "
+                         f"once the {entry.upper()} module is submitted.")
     zpf = db.query(M.StageRecord).filter_by(heat_id=heat.id, stage="zpf").first()
     if choice != "ZPF" and zpf and (zpf.data or zpf.status in ("submitted", "approved")):
         raise ValueError("This heat already carries ZPF production data — it cannot be re-routed to bypass ZPF. "
@@ -172,9 +208,9 @@ def select_refining_route(db: Session, heat: M.Heat, user: M.User, choice: str):
         lrf.data = d
     verb = "re-selected" if old else "selected"
     emit(db, heat, "route_selected", user,
-         f"Post-EAF process route {verb}: {choice}" + (f" (was {old})" if old else "")
-         + ("" if choice == "ZPF" else " — this heat bypasses ZPF"),
-         stage="eaf", payload={"refining_route": choice, "previous": old})
+         f"Post-{entry.upper()} process route {verb}: {choice}" + (f" (was {old})" if old else "")
+         + ("" if choice == "ZPF" or entry == "zpf" else " — this heat bypasses ZPF"),
+         stage=entry, payload={"refining_route": choice, "previous": old})
     audit(db, user, "production", "refining_route_selected", heat.heat_no, choice)
     notify(db, f"Process route {choice} selected for Heat {heat.heat_no}",
            f"Selected by {user.name}." + ("" if choice == "ZPF" else " This heat bypasses ZPF."),
@@ -223,12 +259,13 @@ def submit_stage(db: Session, heat: M.Heat, stage: str, user: M.User) -> list[di
     chem = [ {"values": c.values, "superseded": c.superseded}
              for c in db.query(M.ChemistrySample).filter_by(heat_id=heat.id, stage=stage)]
     mats = [ {"quantity": a.quantity, "category": a.material.category,
-              "superseded": a.superseded}
+              "point": a.addition_point, "superseded": a.superseded}
              for a in db.query(M.MaterialAddition).filter_by(heat_id=heat.id, stage=stage)]
     dels = [ {"end_time": d.end_time, "reason_id": d.reason_id, "superseded": d.superseded}
              for d in db.query(M.Delay).filter_by(heat_id=heat.id, stage=stage)]
     specs = grade_specs_map(db, heat.grade_id)
-    findings = validate_stage(stage, rec.data or {}, chem, mats, dels, specs)
+    findings = validate_stage(stage, rec.data or {}, chem, mats, dels, specs,
+                              heat.entry_stage or "eaf")
     errors = [f for f in findings if f["level"] == "error"]
     if stage == "lrf" and heat.route is None:
         errors.append({"level": "error", "tile": "Process Route Decision",
@@ -265,7 +302,8 @@ def heat_required_stages(db: Session, heat: M.Heat) -> list[str]:
     """Stages actually followed by THIS heat (Process Route Law)."""
     z = db.query(M.StageRecord).filter_by(heat_id=heat.id, stage="zpf").first()
     return required_stages(heat.route, heat.route_refining,
-                           bool(z and (z.data or z.status in ("submitted", "approved"))))
+                           bool(z and (z.data or z.status in ("submitted", "approved"))),
+                           heat.entry_stage or "eaf")
 
 
 def _advance_status(db: Session, heat: M.Heat) -> str:

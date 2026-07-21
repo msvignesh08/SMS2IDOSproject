@@ -14,7 +14,7 @@ required instead of guessing.
 """
 from __future__ import annotations
 from datetime import datetime
-from .stage_config import STAGE_DEFS
+from .stage_config import STAGE_DEFS, stage_def_for
 from ..core.plant_time import duration_minutes
 
 TEMP_RANGE = (1400.0, 1800.0)        # plausible liquid steel window, °C
@@ -39,10 +39,13 @@ def finding(level, tile, message):
 
 def validate_stage(stage: str, data: dict, chemistry: list[dict],
                    materials: list[dict], delays: list[dict],
-                   grade_specs: dict | None = None) -> list[dict]:
+                   grade_specs: dict | None = None,
+                   entry_stage: str = "eaf") -> list[dict]:
     """Validate one stage record. Returns structured findings.
-    `grade_specs`: {element: {min,aim,max}} for the heat's grade."""
-    cfg = STAGE_DEFS[stage]
+    `grade_specs`: {element: {min,aim,max}} for the heat's grade.
+    `entry_stage`: which furnace melted the heat — the ZPF only shows (and so
+    only requires) its Charge Mix for heats actually melted there."""
+    cfg = stage_def_for(entry_stage, stage)
     out: list[dict] = []
 
     # 1 — Mandatory fields (5.12: Missing Fields)
@@ -88,6 +91,8 @@ def validate_stage(stage: str, data: dict, chemistry: list[dict],
                 ("tap_start", "tap_end", "Tap start/end reversed"),
                 ("o2_start", "o2_end", "Oxygen blowing start/end reversed")],
         "zpf": [("zpf_start", "zpf_end", "ZPF start/end reversed"),
+                ("hm_arrival", "hm_charging", "Hot metal arrival must precede charging"),
+                ("blow_on_time", "tap_time", "Blow-ON must precede tapping"),
                 ("o2_start", "o2_end", "Oxygen start/end reversed")],
         "lrf": [("lrf_start", "lrf_end", "LRF start/end reversed"),
                 ("power_on", "power_off", "Power ON/OFF reversed"),
@@ -117,9 +122,11 @@ def validate_stage(stage: str, data: dict, chemistry: list[dict],
             except (TypeError, ValueError):
                 out.append(finding("error", "Plausibility", f"{label} is not a number."))
 
-    if stage == "eaf":
+    # Charge plausibility belongs to whichever furnace melted the heat.
+    if stage in ("eaf", "zpf"):
         rng("hm_temp", *HM_TEMP_RANGE, "Hot metal temperature", "°C")
         rng("hm_weight", 1, MAX_HEAT_WEIGHT_T, "Hot metal weight", "t")
+    if stage == "eaf":
         rng("bath_temp", *TEMP_RANGE, "Bath temperature", "°C")
         rng("tap_temp", *TEMP_RANGE, "Tap temperature", "°C")
         rng("tap_weight", 1, MAX_HEAT_WEIGHT_T, "Tap weight", "t")
@@ -152,7 +159,7 @@ def validate_stage(stage: str, data: dict, chemistry: list[dict],
         if dec in ("Rejected", "Hold") and not data.get("defect_category"):
             out.append(finding("warning", "Non-Conformance",
                                "Consider recording non-conformance details for this decision."))
-    if stage == "eaf":
+    if stage == entry_stage:   # the furnace that actually melted this heat
         live_scrap = [m for m in materials
                       if not m.get("superseded") and m.get("category") == "scrap"]
         if not live_scrap:
@@ -173,10 +180,16 @@ def auto_calculations(stage: str, data: dict, materials: list[dict]) -> dict:
         except ValueError:
             pass  # chronology error already reported by validation
 
-    if stage == "eaf":
-        # Charge mix. `materials` for this stage now carries BOTH the charge
-        # additions and the flux/carbon additions, so the scrap total filters
-        # on category — fluxes are not part of the metallic charge.
+    # Charge mix is computed identically at BOTH primary furnaces — a heat is
+    # melted in one of them, and the arithmetic of a charge does not change
+    # with the unit that holds it. `materials` carries the charge additions
+    # alongside flux/tapping ones, so the scrap total filters on category:
+    # fluxes and ferroalloys are not part of the metallic charge.
+    if stage in ("eaf", "zpf"):
+        # Category alone decides this: on a melting furnace every scrap-class
+        # material IS the charge, whatever point it was tagged with. Fluxes
+        # and the ferroalloys thrown in at tapping are not metallic charge and
+        # are excluded by category, so the totals stay honest either way.
         scrap = sum(float(m["quantity"]) for m in materials
                     if not m.get("superseded") and m.get("category") == "scrap")
         out["total_scrap"] = round(scrap, 2)
@@ -190,21 +203,44 @@ def auto_calculations(stage: str, data: dict, materials: list[dict]) -> dict:
         if total > 0:
             out["hm_pct"] = round(hm / total * 100, 1)
             out["dri_pct"] = round(dri / total * 100, 1)
+    if stage == "eaf":
         dur("power_on", "power_off", "power_on_duration")
         dur("charging_start", "charging_end", "charging_duration")
         dur("tap_start", "tap_end", "tap_duration")
+        # Cycle: power-on to tap, and the tap-to-tap time against the
+        # PREVIOUS heat's tap — the rhythm the shop is actually measured on.
+        dur("power_on", "tap_end", "pon_to_tap")
+        dur("pre_heat_tap_time", "tap_end", "ttt")
     if stage == "zpf":
         dur("zpf_start", "zpf_end", "zpf_duration")
+        dur("pre_heat_tap_time", "blow_on_time", "tap_to_blow_on")
+        dur("blow_on_time", "tap_time", "bon_to_tap")
+        dur("pre_heat_tap_time", "tap_time", "ttt")
         ti, tf = data.get("temp_initial"), data.get("temp_final")
         if ti not in (None, "") and tf not in (None, ""):
             out["temp_delta"] = round(float(tf) - float(ti), 1)
     if stage == "lrf":
         dur("power_on", "power_off", "power_on_time")
         dur("lrf_start", "lrf_end", "lrf_duration")
+        dur("lrf_start", "lrf_end", "lrf_process_time")
+        # Variance vs the standard: negative means the heat ran AHEAD of it.
+        # Derived so it can never disagree with the times above.
+        std = data.get("std_process_time")
+        if std not in (None, "") and out.get("lrf_process_time") is not None:
+            try:
+                out["process_variance"] = round(out["lrf_process_time"] - float(std), 1)
+            except (TypeError, ValueError):
+                pass
     if stage == "vd":
         dur("vd_start", "vd_end", "vac_duration")
     if stage == "caster":
         dur("cast_start", "cast_end", "cast_duration")
+        tgt = data.get("targeted_cast_time")
+        if tgt not in (None, "") and out.get("cast_duration") is not None:
+            try:
+                out["cast_time_variance"] = round(out["cast_duration"] - float(tgt), 2)
+            except (TypeError, ValueError):
+                pass
         # Yield accounting: sum every loss stream the logbook tracks, then
         # express billet output as a percentage of the liquid metal it came
         # from. Both computed, so the yield figure is always consistent with

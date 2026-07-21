@@ -104,6 +104,7 @@ MATERIALS = [
     ("FECRLC", "FeCr LC", "alloy", "kg", {"Cr": 65.0, "C": 0.1, "recovery": 95.0}),
     ("FEMO", "FeMo", "alloy", "kg", {"Mo": 60.0, "recovery": 98.0}),
     ("FEV", "FeV", "alloy", "kg", {"V": 50.0, "recovery": 95.0}),
+    ("FEAL", "FeAl", "alloy", "kg", {"Al": 40.0, "recovery": 85.0}),
     ("FETI", "FeTi", "alloy", "kg", {"Ti": 70.0, "recovery": 55.0}),
     ("ALB", "Aluminium Bar", "alloy", "kg", {"Al": 97.0, "recovery": 60.0}),
     ("NI", "Nickel Plate", "alloy", "kg", {"Ni": 99.0, "recovery": 98.0}),
@@ -211,9 +212,17 @@ def seed(db: Session):
         for stage, agency, reason in DELAY_CODES:
             db.add(M.DelayReason(category=agency, reason=reason,
                                  stage=stage, department=agency))
+        # PPC appears in the plant's own delay history but not in the codes
+        # sheet, so it needs a home or those delays import without a reason.
+        for st in ("eaf", "zpf", "lrf", "vd", "caster"):
+            db.add(M.DelayReason(category="PPC", reason="Production planning",
+                                 stage=st, department="PPC"))
 
     if db.query(M.HeatSeries).count() == 0:
-        db.add(M.HeatSeries(prefix="E", next_number=260151, pad=6))
+        # One series per melting furnace: the plant numbers EAF heats E… and
+        # ZPF heats F…, and the two never share a number.
+        db.add(M.HeatSeries(prefix="E", next_number=260151, pad=6, unit="eaf"))
+        db.add(M.HeatSeries(prefix="F", next_number=263581, pad=6, unit="zpf"))
 
     defaults = {
         "plant_name": "Steel Melting Shop — SMS-2",

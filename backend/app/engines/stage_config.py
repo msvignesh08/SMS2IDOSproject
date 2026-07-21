@@ -50,12 +50,14 @@ STAGE_DEFS = {
                 F("hm_remarks", "Charge Remarks", "textarea"),
             ]},
             {"key": "scrap", "label": "Scrap & Charge Materials", "icon": "🧲",
-             "materials": {"category": "scrap", "label": "Charge Mix Additions"}},
+             "materials": {"category": "scrap", "point": "charge",
+                           "label": "Charge Mix Additions"}},
             {"key": "charge_summary", "label": "Charge Summary", "icon": "📊", "fields": [
                 F("total_scrap", "Total Scrap Weight", auto=True, unit="t"),
                 F("total_charge", "Total Charge Weight", auto=True, unit="t"),
                 F("hm_pct", "Hot Metal %", auto=True, unit="%"),
                 F("dri_pct", "DRI %", auto=True, unit="%"),
+                F("yield_pct", "Yield %", unit="%"),
             ]},
             {"key": "charging", "label": "Charging Information", "icon": "🟦", "fields": [
                 F("charging_start", "Charging Start Time", "time", req=True),
@@ -80,7 +82,9 @@ STAGE_DEFS = {
             ]},
             {"key": "electrode", "label": "Electrode Consumption", "icon": "🕯", "fields": [
                 F("electrode_kg", "Electrode Consumption", unit="kg"),
-                F("electrode_addition", "Electrode Addition", unit="kg"),
+                # WHICH electrode was added (E1/E2/E3), not a weight — the
+                # plant's sheet records the position, so this is text.
+                F("electrode_addition", "Electrode Added", "text"),
                 F("electrode_supplier", "Electrode Supplier"),
                 F("electrode_break", "Electrode Break", "check"),
                 F("electrode_joints", "Electrode Joint Count", step="1"),
@@ -104,6 +108,21 @@ STAGE_DEFS = {
                   options=["Good", "Foamy", "Heavy", "Wet", "Dry"]),
                 F("tap_remarks", "Tapping Remarks", "textarea"),
             ]},
+            # Ferroalloys go into the LADLE as the furnace taps — recorded at
+            # the furnace that tapped, not at the LRF downstream.
+            {"key": "tapping_add", "label": "Tapping Additions", "icon": "🥄",
+             "materials": {"category": ["alloy", "flux"], "point": "tapping",
+                           "label": "Added during tapping"}},
+            # Power-on/tap cycle — the heat-to-heat rhythm the shop is measured on.
+            {"key": "cycle", "label": "Power & Tap Cycle", "icon": "⏲", "fields": [
+                F("pre_heat_tap_time", "Previous Heat Tap Time", "time"),
+                F("pon_to_tap", "Power-ON to Tap", auto=True, unit="min"),
+                F("ttt", "Total Tap-to-Tap Time (TTT)", auto=True, unit="min"),
+            ]},
+            {"key": "ebt", "label": "Tapping Condition", "icon": "🕳", "fields": [
+                F("ebt_free_opening", "EBT Free Opening", "select", options=["Yes", "No"]),
+                F("ebt_filling_supplier", "EBT Filling Mass Supplier"),
+            ]},
             {"key": "delays", "label": "Delay Tracking", "icon": "⏱", "delays": True},
         ],
     },
@@ -114,6 +133,38 @@ STAGE_DEFS = {
         "icon": "🌪",
         "authorized": ["ZPF Operator", "Operator", "Shift Engineer", "Shift Incharge", "Administrator"],
         "tiles": [
+            # ── CHARGE MIX — shown ONLY when the heat was MELTED in the ZPF.
+            # The ZPF is a primary melting furnace in its own right: heats
+            # numbered F… are charged and tapped here and never see the EAF.
+            # For an EAF heat that comes here as the optional post-EAF de-phos
+            # step, these tiles are hidden — it already charged at the furnace.
+            # See stage_def_for(); `charge` marks the tiles it filters.
+            {"key": "general", "label": "General Information", "icon": "🟦", "charge": True, "fields": [
+                F("blast_furnace", "Blast Furnace", "select", options=["BF-1", "BF-2"]),
+                F("ladle_no", "Ladle Number", "select",
+                  options=[str(i) for i in range(1, 16)]),
+                F("lead_seq", "Lead Sequence"),
+            ]},
+            {"key": "charge_mix", "label": "Charge Mix", "icon": "⚖", "charge": True, "fields": [
+                F("hm_weight", "Hot Metal Weight", req=True, unit="t"),
+                F("hm_temp", "Hot Metal Temperature", unit="°C"),
+                F("hm_arrival", "Hot Metal Arrival", "time"),
+                F("hm_charging", "Hot Metal Charging", "time"),
+                F("dri_feed", "DRI Feed", unit="t"),
+                F("hot_heel", "Hot Heel", unit="t"),
+                F("hm_remarks", "Charge Remarks", "textarea"),
+            ]},
+            {"key": "scrap", "label": "Scrap & Charge Materials", "icon": "🧲", "charge": True,
+             "materials": {"category": "scrap", "point": "charge",
+                           "label": "Charge Mix Additions"}},
+            {"key": "charge_summary", "label": "Charge Summary", "icon": "📊", "charge": True, "fields": [
+                F("total_scrap", "Total Scrap Weight", auto=True, unit="t"),
+                F("total_charge", "Total Charge Weight", auto=True, unit="t"),
+                F("hm_pct", "Hot Metal %", auto=True, unit="%"),
+                F("dri_pct", "DRI %", auto=True, unit="%"),
+                F("total_lm_wt", "Total Liquid Metal Weight", unit="t"),
+                F("yield_pct", "Yield %", unit="%"),
+            ]},
             {"key": "process", "label": "Process Operation", "icon": "🔥", "fields": [
                 F("zpf_start", "ZPF Start Time", "time", req=True),
                 F("zpf_end", "ZPF End Time", "time", req=True),
@@ -123,21 +174,47 @@ STAGE_DEFS = {
                   options=["Single Slag", "Double Slag", "Slag Free"]),
                 F("process_remarks", "Process Remarks", "textarea"),
             ]},
+            # Blow-on/tap cycle — the heat-to-heat rhythm the shop is measured on.
+            {"key": "cycle", "label": "Blow & Tap Cycle", "icon": "⏲", "fields": [
+                F("pre_heat_tap_time", "Previous Heat Tap Time", "time"),
+                F("blow_on_time", "Blow ON Time", "time"),
+                F("tap_time", "Tap Time", "time"),
+                F("tap_to_blow_on", "Tap to Blow-ON", auto=True, unit="min"),
+                F("bon_to_tap", "Blow-ON to Tap", auto=True, unit="min"),
+                F("ttt", "Total Tap-to-Tap Time (TTT)", auto=True, unit="min"),
+                F("process_delay", "Process Delay", unit="min"),
+            ]},
             {"key": "oxygen", "label": "Oxygen Blowing", "icon": "💨", "fields": [
                 F("o2_start", "Oxygen Start Time", "time"),
                 F("o2_end", "Oxygen End Time", "time"),
                 F("o2_total", "Total Oxygen Consumption", req=True, unit="Nm³"),
+                F("tapping_oxygen", "Tapping Oxygen", unit="Nm³"),
+            ]},
+            {"key": "utilities", "label": "Gases & Utilities", "icon": "🫧", "fields": [
+                F("zpf_argon", "ZPF Argon", unit="Nm³"),
+                F("lpg_gas", "LPG Gas", unit="kg"),
+                F("compressed_air", "Compressed Air", unit="Nm³"),
             ]},
             {"key": "temperature", "label": "Temperature", "icon": "🌡", "fields": [
                 F("temp_initial", "Initial Temperature", req=True, unit="°C"),
                 F("temp_intermediate", "Intermediate Temperature", unit="°C"),
                 F("temp_final", "Final Temperature", req=True, unit="°C"),
                 F("temp_time", "Temperature Measurement Time", "time"),
+                F("tap_temp", "Tapping Temperature", unit="°C"),
             ]},
             {"key": "chemistry", "label": "Chemistry", "icon": "🧪",
              "chemistry": {"label": "ZPF", "elements": CHEM_BASE, "required": True}},
             {"key": "flux", "label": "Flux & Additions", "icon": "🧱",
              "materials": {"category": "flux", "label": "Flux Additions"}},
+            # Ferroalloys go into the LADLE as the furnace taps — recorded at
+            # the furnace that tapped, not at the LRF downstream.
+            {"key": "tapping_add", "label": "Tapping Additions", "icon": "🥄",
+             "materials": {"category": ["alloy", "flux"], "point": "tapping",
+                           "label": "Added during tapping"}},
+            {"key": "ebt", "label": "Tapping Condition", "icon": "🕳", "fields": [
+                F("ebt_free_opening", "EBT Free Opening", "select", options=["Yes", "No"]),
+                F("ebt_filling_supplier", "EBT Filling Mass Supplier"),
+            ]},
             {"key": "delays", "label": "Delay Tracking", "icon": "⏱", "delays": True},
         ],
     },
@@ -161,6 +238,26 @@ STAGE_DEFS = {
                 F("power_on_time", "Total Power ON Time", auto=True, unit="min"),
                 F("energy_kwh", "Energy Consumption", unit="kWh"),
                 F("furnace_remarks", "Furnace Remarks", "textarea"),
+            ]},
+            # How the ladle arrived from the furnace, and how the heat ran
+            # against its standard — the numbers the LRF is judged on.
+            {"key": "ladle_in", "label": "Ladle Arrival & Condition", "icon": "🪣", "fields": [
+                F("ladle_no", "Ladle Number", "select",
+                  options=[str(i) for i in range(1, 16)]),
+                F("eaf_tap_time", "Furnace Tap Time", "time"),
+                F("liquidus", "Liquidus Temperature", unit="°C"),
+                F("grade_type", "Grade Type"),
+                F("free_board", "Free Board", unit="mm"),
+                F("opening_p", "Opening %P", unit="%"),
+            ]},
+            {"key": "cycle_lrf", "label": "Process Timing", "icon": "⏲", "fields": [
+                F("lrf_process_time", "LRF Process Time", auto=True, unit="min"),
+                F("std_process_time", "Standard Process Time", unit="min"),
+                F("process_variance", "Variance vs Standard", auto=True, unit="min"),
+            ]},
+            {"key": "crew_lrf", "label": "Crew", "icon": "👷", "fields": [
+                F("lrf_engineer", "LRF Engineer"),
+                F("shift_incharge", "Shift Incharge"),
             ]},
             {"key": "chemistry", "label": "Chemistry (vs Target)", "icon": "🧪",
              "chemistry": {"label": "LRF", "elements": CHEM_LRF, "required": True, "show_target": True}},
@@ -221,6 +318,16 @@ STAGE_DEFS = {
             ]},
             {"key": "chemistry", "label": "Chemistry", "icon": "🧪",
              "chemistry": {"label": "VD", "elements": CHEM_LRF, "required": True, "show_target": True}},
+            # Hydrogen is the whole point of degassing — the before/after
+            # Hydris readings are the proof the treatment worked.
+            {"key": "hydrogen", "label": "Hydrogen & Steam", "icon": "💧", "fields": [
+                F("hydris_before", "Hydris Reading — Before", unit="ppm"),
+                F("hydris_after", "Hydris Reading — After", unit="ppm"),
+                F("vd_steam", "Total Steam Consumption", unit="t"),
+            ]},
+            {"key": "crew_vd", "label": "Crew", "icon": "👷", "fields": [
+                F("vd_engineer", "VD Engineer"),
+            ]},
             {"key": "delays", "label": "Delay Tracking", "icon": "⏱", "delays": True},
         ],
     },
@@ -239,6 +346,27 @@ STAGE_DEFS = {
                 F("cast_speed", "Casting Speed", unit="m/min"),
                 F("cast_remarks", "Casting Remarks", "textarea"),
             ]},
+            # A caster runs SEQUENCES, not single heats: which sequence this
+            # heat belongs to and where it sits in the ladle order.
+            {"key": "sequence", "label": "Sequence & Turret", "icon": "🔗", "fields": [
+                F("seq_no", "Sequence Number"),
+                F("seq_length", "Sequence Position"),
+                F("grade_type", "Grade Type"),
+                F("ladle_on_turret", "Ladle on Turret Time", "time"),
+                F("machine_prep_time", "Machine Preparation Time", unit="min"),
+            ]},
+            # Actual against target — how this heat cast versus how it should
+            # have, which is what the caster's performance is judged on.
+            {"key": "cast_perf", "label": "Casting Performance", "icon": "📈", "fields": [
+                F("targeted_cast_time", "Targeted Casting Time", unit="min"),
+                F("targeted_speed", "Targeted Casting Speed", unit="m/min"),
+                F("cast_time_variance", "Variance vs Target", auto=True, unit="min"),
+                F("superheat_1", "Superheat 1", unit="°C"),
+                F("superheat_2", "Superheat 2", unit="°C"),
+                F("superheat_3", "Superheat 3", unit="°C"),
+                F("cast_delay_reason", "Casting Delay Reason"),
+                F("shift_incharge", "Shift Incharge"),
+            ]},
             {"key": "tundish", "label": "Tundish", "icon": "🫙", "fields": [
                 F("tundish_no", "Tundish Number", "text"),
                 F("tundish_temp", "Tundish Temperature", req=True, unit="°C"),
@@ -252,8 +380,12 @@ STAGE_DEFS = {
                 F("strand_remarks", "Strand Remarks", "textarea"),
             ]},
             {"key": "production", "label": "Billet Production", "icon": "🧱", "fields": [
-                F("billet_size", "Billet Size", "select", req=True,
-                  options=["100×100", "125×125", "150×150", "160×160"]),
+                # 180 and 210 are the sections this plant actually casts
+                # (BC2/BC3 "Section(MM)"); without them the real history
+                # could not be recorded.
+                F("billet_size", "Billet Size / Section", "select", req=True,
+                  options=["100×100", "125×125", "150×150", "160×160",
+                           "180×180", "210×210"]),
                 F("billet_length", "Billet Length", req=True, unit="m"),
                 F("billet_count", "Number of Billets", req=True, step="1"),
                 F("billet_weight", "Total Billet Weight", req=True, unit="t"),
@@ -343,14 +475,20 @@ STAGE_DEFS = {
 
 # Ordered mandatory route; VD inserted only when route requires it (5.8)
 def required_stages(route: str | None, refining: str | None = None,
-                    has_zpf_data: bool = False) -> list[str]:
+                    has_zpf_data: bool = False,
+                    entry_stage: str = "eaf") -> list[str]:
     """THE PROCESS ROUTE LAW: every heat follows its OWN route.
-    ZPF is included ONLY when the post-EAF decision selected it (or legacy
-    data already exists). VD is included ONLY on a VD route. Nothing is
-    forced — two heats of the same grade may take different paths."""
-    base = ["eaf"]
-    if refining == "ZPF" or has_zpf_data:
-        base.append("zpf")
+    A heat is melted in ONE primary furnace — the EAF or the ZPF — and only
+    that one is on its route. For an EAF heat the ZPF remains the optional
+    post-EAF de-phos step, included only when the route decision selected it
+    (or legacy data already exists). VD is included ONLY on a VD route.
+    Nothing is forced — two heats of the same grade may take different paths."""
+    if entry_stage == "zpf":
+        base = ["zpf"]
+    else:
+        base = ["eaf"]
+        if refining == "ZPF" or has_zpf_data:
+            base.append("zpf")
     base.append("lrf")
     if route in ("VD-2", "VD-3"):
         base.append("vd")
@@ -358,3 +496,22 @@ def required_stages(route: str | None, refining: str | None = None,
 
 
 REFINING_ROUTES = ("ZPF", "LRF-5", "LRF-6")
+
+
+def stage_def_for(entry_stage: str, stage: str) -> dict:
+    """The stage definition AS THIS HEAT SEES IT.
+
+    The ZPF carries a Charge Mix because heats can be melted there — but only
+    for heats that actually started there. An EAF heat arriving at the ZPF as
+    the optional post-EAF de-phos step already charged at the furnace, so
+    showing it a second charge section would invite the same tonnage to be
+    entered twice. Tiles marked `charge` are dropped in that case.
+
+    Anything that decides whether a field is REQUIRED must read the stage
+    through this function, or validation will demand fields the operator was
+    never shown.
+    """
+    cfg = STAGE_DEFS[stage]
+    if stage != "zpf" or (entry_stage or "eaf") == "zpf":
+        return cfg
+    return {**cfg, "tiles": [t for t in cfg["tiles"] if not t.get("charge")]}

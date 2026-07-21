@@ -156,6 +156,9 @@ class HeatSeries(Base):
     prefix = Column(String, nullable=False, default="E")
     next_number = Column(Integer, nullable=False, default=260001)
     pad = Column(Integer, default=6)
+    # Which melting furnace this series numbers. The plant runs two: heats
+    # melted in the EAF are numbered E…, heats melted in the ZPF are F….
+    unit = Column(String, default="eaf")        # eaf|zpf
     active = Column(Boolean, default=True)
 
 
@@ -171,6 +174,11 @@ class Heat(Base):
     grade_id = Column(Integer, ForeignKey("steel_grades.id"))
     status = Column(String, default="created", index=True)
     # created|eaf|zpf|lrf|route_selected|vd|caster|quality|review|locked|aborted
+    # WHICH FURNACE MELTED THIS HEAT — the plant runs two primary units and a
+    # heat starts at one of them, never both. EAF-entry heats are numbered E…
+    # and ZPF-entry heats F…. Defaults to "eaf", so every heat recorded before
+    # this existed keeps exactly its current behaviour.
+    entry_stage = Column(String, default="eaf", index=True)   # eaf|zpf
     route = Column(String, nullable=True)                # VD-2|VD-3|BC-2|BC-3
     route_refining = Column(String, nullable=True)   # ZPF | LRF-5 | LRF-6 (post-EAF decision)
     route_vd = Column(String, nullable=True)             # VD unit if VD route
@@ -232,6 +240,13 @@ class MaterialAddition(Base):
     quantity = Column(Float, nullable=False)
     unit = Column(String, default="kg")
     addition_time = Column(DateTime, nullable=True)
+    # WHERE IN THE PROCESS the addition was made. The same material can be
+    # added twice to one heat — e.g. FeMn HC into the ladle during tapping AND
+    # again at the LRF — and the log sheet records them in separate columns.
+    # Without this they would collapse into one indistinguishable row, and
+    # tapping lime would show up in the furnace's flux tile as well as its
+    # tapping tile. Legacy rows default to "process", so nothing moves.
+    addition_point = Column(String, default="process")   # charge|tapping|process
     remarks = Column(String, default="")
     superseded = Column(Boolean, default=False)
     material = relationship("Material", lazy="joined")

@@ -667,3 +667,75 @@ r_dis = call("POST", "/api/auth/login", {"employee_id": "VIEW01", "password": "s
 assert r_dis["__status"] == 403 and "has been disabled" in r_dis["detail"], r_dis
 call("PATCH", f"/api/admin/users/{v01['id']}", {"active": True, "reauth_password": "admin@123"}, token=adm2)
 print("LOGIN PAGE LAW OK — account-not-found, wrong-password and disabled messages exact; never 'session expired'")
+
+# ══════════════════════════════════════════════════════════════════════════
+# TWO MELTING FURNACES — a heat starts at the EAF (E…) or the ZPF (F…)
+# The plant runs both as primary units; a heat is melted in one, never both.
+# ══════════════════════════════════════════════════════════════════════════
+print("\n--- Dual entry furnaces: EAF (E) and ZPF (F) ---")
+# Fresh token: earlier sections rotate OP001's password and revoke its sessions,
+# so this block drives everything as the Shift Engineer (untouched, and
+# authorised for both furnaces).
+t_se = login("SE001", "steel@123")["token"]
+t_op = t_se
+hz = call("POST", "/api/heats", {"grade_code": "54SICR6", "entry_stage": "zpf",
+                                 "shift_engineer": "R. Sharma"}, token=t_se)
+HZ = hz["heat_no"]
+assert HZ.startswith("F"), f"a ZPF-melted heat must take an F number, got {HZ}"
+assert hz["entry_stage"] == "zpf", hz
+assert hz["gates"]["eaf"]["state"] == "not_in_route", hz["gates"]["eaf"]
+assert "melted in the ZPF" in hz["gates"]["eaf"]["reason"], hz["gates"]["eaf"]
+assert hz["gates"]["zpf"]["state"] == "open", hz["gates"]["zpf"]
+assert "eaf" not in hz["required_stages"] and "zpf" in hz["required_stages"], hz["required_stages"]
+print(f"ZPF ENTRY OK — {HZ}: F series issued, EAF not_in_route, ZPF open")
+
+# the ZPF shows its OWN Charge Mix for a heat melted there
+zdef = call("GET", f"/api/heats/{HZ}/stages/zpf", token=t_op)["def"]
+zlabels = [t["label"] for t in zdef["tiles"]]
+assert "Charge Mix" in zlabels and "Scrap & Charge Materials" in zlabels, zlabels
+assert "Tapping Additions" in zlabels, zlabels
+# ...but NOT for an EAF heat that comes here as the post-EAF de-phos step
+edef = call("GET", f"/api/heats/{HN}/stages/zpf", token=t_op)["def"]
+elabels = [t["label"] for t in edef["tiles"]]
+assert "Charge Mix" not in elabels, f"an EAF heat must not be asked to charge twice: {elabels}"
+print("CHARGE SECTION SCOPING OK — ZPF charges only heats melted in the ZPF")
+
+# charge auto-calc fires at the ZPF exactly as it does at the EAF
+call("PUT", f"/api/heats/{HZ}/stages/zpf", {"data": {
+    "hm_weight": 60.0, "hm_temp": 1350, "zpf_start": "2026-07-18T02:00",
+    "zpf_end": "2026-07-18T02:40", "o2_total": 500,
+    "temp_initial": 1600, "temp_final": 1620,
+    "blow_on_time": "2026-07-18T02:05", "tap_time": "2026-07-18T03:00",
+    "pre_heat_tap_time": "2026-07-18T01:44"}}, token=t_op)
+call("POST", f"/api/heats/{HZ}/stages/zpf/materials",
+     {"material_id": mat["HSC"]["id"], "quantity": 15.0, "point": "charge"}, token=t_op)
+# a ferroalloy thrown into the ladle at tapping must NOT inflate the charge
+call("POST", f"/api/heats/{HZ}/stages/zpf/materials",
+     {"material_id": mat["SIMN"]["id"], "quantity": 400.0, "point": "tapping"}, token=t_op)
+zs = call("GET", f"/api/heats/{HZ}/stages/zpf", token=t_op)
+zd = zs["data"]
+assert zd["total_scrap"] == 15.0, zd
+assert zd["total_charge"] == 75.0, zd
+assert zd["hm_pct"] == 80.0, zd
+assert zd["ttt"] == 76.0, f"tap-to-tap wrong: {zd}"
+assert zd["bon_to_tap"] == 55.0, zd
+tap_rows = [m for m in zs["materials"] if m["point"] == "tapping"]
+chg_rows = [m for m in zs["materials"] if m["point"] == "charge"]
+assert len(tap_rows) == 1 and len(chg_rows) == 1, zs["materials"]
+print(f"ZPF CHARGE + CYCLE OK — {zd['total_charge']} t charge, {zd['hm_pct']}% HM, TTT {zd['ttt']} min;"
+      " tapping alloys excluded from the charge")
+
+# a ZPF-melted heat has already been through the ZPF: it cannot re-route to it
+rr_z = call("POST", f"/api/heats/{HZ}/refining-route", {"route": "ZPF"}, token=t_se, expect_ok=False)
+assert rr_z["__status"] == 400 and "already been through" in rr_z["detail"], rr_z
+print("ROUTE LAW OK — a ZPF heat cannot be routed back into the ZPF")
+
+# EAF heats are untouched: still E series, still start at the EAF
+he = call("POST", "/api/heats", {"grade_code": "Fe500D"}, token=t_se)
+assert he["heat_no"].startswith("E") and he["entry_stage"] == "eaf", he
+assert he["gates"]["eaf"]["state"] == "open", he["gates"]
+print(f"EAF ENTRY UNCHANGED OK — {he['heat_no']} still starts at the EAF on the E series")
+
+print("\n========================================")
+print("DUAL FURNACE LAW: ALL PASSED")
+print("========================================")

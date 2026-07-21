@@ -1393,6 +1393,11 @@ async function openCreateHeat(isTraining) {
       <label class="fld"><span>Steel grade * <span class="unit">type any grade — new grades register automatically</span></span>
         <input id="nh-grade" list="nh-grades" placeholder="e.g. Fe500D, IS2062, E250 BR" autocomplete="off">
         <datalist id="nh-grades">${grades.map(g => `<option value="${esc(g.code)}">`).join("")}</datalist></label>
+      <label class="fld"><span>Melting furnace * <span class="unit">decides the number series and the route</span></span>
+        <select id="nh-entry">
+          <option value="eaf">EAF — Electric Arc Furnace (E series)</option>
+          <option value="zpf">ZPF (F series)</option>
+        </select></label>
       <label class="fld"><span>Heat number <span class="unit">(blank = auto from series)</span></span>
         <input id="nh-no" placeholder="auto" class="mono" style="text-transform:uppercase"></label>
       <label class="fld"><span>Shift Engineer</span>
@@ -1425,6 +1430,7 @@ async function openCreateHeat(isTraining) {
           heat_no: $("#nh-no", m).value.trim() || null,
           shift_engineer: $("#nh-se", m).value.trim(),
           is_training: !!isTraining,
+          entry_stage: $("#nh-entry", m).value,
         });
         UI.closeModal();
         toast(`Heat ${h.heat_no} created`, "ok");
@@ -1471,9 +1477,14 @@ async function viewHeatWorkspace(heatNo, stageArg) {
       <div class="row">
         <span class="hr-no" style="font-size:24px">${h.heat_no}</span>
         <span class="tag ${h.status}">${h.status.replace("_", " ")}</span>
+        ${h.entry_stage === "zpf"
+          ? `<span class="tag open" title="Melting furnace">melted in ZPF</span>` : ""}
         ${h.route_refining
-          ? `<span class="tag ${h.route_refining === "ZPF" ? "open" : "done"}" title="Post-EAF process route">${
-              h.route_refining === "ZPF" ? "via ZPF" : `${esc(h.route_refining)} · ZPF bypassed`}</span>`
+          ? `<span class="tag ${h.route_refining === "ZPF" ? "open" : "done"}" title="Process route after the melting furnace">${
+              h.route_refining === "ZPF" ? "via ZPF"
+              /* A ZPF-melted heat did not "bypass" the ZPF — it started there. */
+              : h.entry_stage === "zpf" ? esc(h.route_refining)
+              : `${esc(h.route_refining)} · ZPF bypassed`}</span>`
           : eafDone ? `<span class="tag error">next step not chosen</span>` : ""}
         ${h.route ? `<span class="tag open">Route ${h.route}</span>` : `<span class="tag pending">route pending</span>`}
         <span class="muted small">Grade ${esc(h.grade)} · Plant Day ${h.plant_day} · Shift ${h.shift} · SE ${esc(h.shift_engineer || "—")}</span>
@@ -1552,7 +1563,7 @@ async function renderStage(h, stage) {
       subtitle = `${sd.chemistry.length} sample(s)` + (reqF.length ? (fOk ? " · readings ✓" : ` · ${reqF.map(f => f.label).join(", ")} required`) : "");
     }
     if (t.materials) {
-      const rows = sd.materials.filter(m => matchCat(m, t.materials.category));
+      const rows = sd.materials.filter(m => matchCat(m, t.materials.category, t.materials.point || ""));
       state = rows.length ? "done" : "todo"; subtitle = `${rows.length} addition(s)`;
     }
     if (t.delays) { state = sd.delays.length ? (sd.delays.some(d => !d.end) ? "part" : "done") : "todo"; subtitle = `${sd.delays.length} delay(s)`; }
@@ -1560,7 +1571,8 @@ async function renderStage(h, stage) {
     if (t.route_refining) {
       state = h.route_refining ? "done" : "err";
       subtitle = h.route_refining
-        ? `\u2192 ${h.route_refining}` + (h.route_refining === "ZPF" ? "" : " (bypasses ZPF)")
+        ? `\u2192 ${h.route_refining}` +
+          (h.route_refining === "ZPF" || h.entry_stage === "zpf" ? "" : " (bypasses ZPF)")
         : "where next? decision required";
     }
     if (t.calculator) { state = "todo"; subtitle = "open calculator"; }
@@ -1619,7 +1631,20 @@ async function renderStage(h, stage) {
   };
 }
 
-const matchCat = (m, cat) => (S.masters.materials.find(x => x.id === m.material_id) || {}).category === cat;
+/* Does an addition belong in this tile?
+   A tile claims one category or several (Tapping Additions takes both the
+   ferroalloys and the tapping lime), and optionally one addition POINT.
+   Two tiles on the same stage can share a category — the furnace's flux tile
+   and its tapping tile both hold flux — so the point is what separates them:
+     tile WITH a point    → only additions made at that point
+     tile WITHOUT a point → everything except tapping (which has its own tile) */
+const matchCat = (m, cat, point) => {
+  const c = m.category || (S.masters.materials.find(x => x.id === m.material_id) || {}).category;
+  const cats = Array.isArray(cat) ? cat : [cat];
+  if (!cats.includes(c)) return false;
+  const p = m.point || "process";
+  return point ? p === point : p !== "tapping";
+};
 
 function findingsHTML(findings) {
   if (!findings?.length) return "";
@@ -1885,12 +1910,14 @@ function chemistryTile(h, stage, tile, sd, readonly) {
 
 function materialsTile(h, stage, tile, sd, readonly) {
   const cat = tile.materials.category;
-  const mats = S.masters.materials.filter(x => x.category === cat);
-  const rows = () => sd.materials.filter(x => matchCat(x, cat)).map(x => `
+  const point = tile.materials.point || "";
+  const cats = Array.isArray(cat) ? cat : [cat];
+  const mats = S.masters.materials.filter(x => cats.includes(x.category));
+  const rows = () => sd.materials.filter(x => matchCat(x, cat, point)).map(x => `
     <tr><td>${esc(x.name)}</td><td class="mono">${fmtN(x.qty, 2)} ${esc(x.unit)}</td>
       <td class="mono">${fmtT(x.time)}</td><td>${esc(x.remarks || "")}</td>
       <td>${!readonly ? `<button class="btn small" data-del="${x.id}" title="Supersede Record — preserved forever in audit history">⊘ Supersede</button>` : ""}</td></tr>`).join("");
-  const total = sd.materials.filter(x => matchCat(x, cat)).reduce((a, x) => a + x.qty, 0);
+  const total = sd.materials.filter(x => matchCat(x, cat, point)).reduce((a, x) => a + x.qty, 0);
 
   UI.modal(`
     <h3>${tile.icon} ${esc(tile.materials.label)} — ${h.heat_no}</h3>
@@ -1910,7 +1937,7 @@ function materialsTile(h, stage, tile, sd, readonly) {
     <h3 style="margin-top:14px">Recorded additions <span class="muted plain">· total ${fmtN(total, 2)}</span></h3>
     <table class="t"><thead><tr><th>Material</th><th>Qty</th><th>Time</th><th>Remarks</th><th></th></tr></thead>
       <tbody>${rows()}</tbody></table>
-    ${!sd.materials.filter(x => matchCat(x, cat)).length ? `<div class="empty">Nothing recorded yet.</div>` : ""}
+    ${!sd.materials.filter(x => matchCat(x, cat, point)).length ? `<div class="empty">Nothing recorded yet.</div>` : ""}
     <div class="modal-foot"><button class="btn" onclick="UI.closeModal()">Close</button></div>`, m => {
     const add = $("#ma-add", m);
     if (add) {
@@ -1927,6 +1954,7 @@ function materialsTile(h, stage, tile, sd, readonly) {
         await POST(`/api/heats/${h.heat_no}/stages/${stage}/materials`, {
           material_id: +$("#ma-mat", m).value, quantity: qty,
           addition_time: $("#ma-time", m).value || null, remarks: $("#ma-rem", m).value,
+          point: point || "process",
         });
         toast("Addition recorded", "ok");
         UI.closeModal();

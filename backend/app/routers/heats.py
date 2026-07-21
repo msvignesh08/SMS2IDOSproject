@@ -9,7 +9,7 @@ from ..core.database import get_db
 from ..core import plant_time
 from .. import models as M
 from ..engines import lifecycle as L
-from ..engines.stage_config import STAGE_DEFS, required_stages
+from ..engines.stage_config import STAGE_DEFS, required_stages, stage_def_for
 from ..engines.validation import validate_stage, auto_calculations
 from ..engines.calculator import alloy_requirements, flux_recommendation, wire_recommendation
 from .auth import get_current_user, require_perm
@@ -45,6 +45,9 @@ class HeatCreate(BaseModel):
     heat_no: str | None = None
     shift_engineer: str = ""
     is_training: bool = False
+    # WHICH FURNACE MELTS THIS HEAT. The plant runs two primary units; the
+    # choice drives the heat-number series (E… / F…) and the route.
+    entry_stage: str = "eaf"           # eaf|zpf
 
 
 @router.post("/heats")
@@ -70,7 +73,8 @@ def create_heat(body: HeatCreate, user: M.User = Depends(require_perm("heats.cre
                          kind="admin", audience_role="Administrator")
             gid = g.id
         h = L.create_heat(db, user, gid, body.heat_no,
-                          body.shift_engineer or user.name, body.is_training)
+                          body.shift_engineer or user.name, body.is_training,
+                          body.entry_stage)
         db.commit()
     except ValueError as e:
         db.rollback()
@@ -97,6 +101,7 @@ def heat_summary(db, h: M.Heat):
     gates = L.stage_gates(db, h)
     return {"heat_no": h.heat_no, "grade": h.grade.code if h.grade else None,
             "status": h.status, "route": h.route,
+            "entry_stage": h.entry_stage or "eaf",
             "route_refining": h.route_refining,
             "plant_day": h.plant_day.isoformat(), "shift": h.shift,
             "shift_engineer": h.shift_engineer,
@@ -161,14 +166,15 @@ def get_stage(heat_no: str, stage: str, user: M.User = Depends(get_current_user)
                                        superseded=False).all()
     specs = L.grade_specs_map(db, h.grade_id)
     data = (rec.data or {}) if rec else {}
+    entry = h.entry_stage or "eaf"
     findings = validate_stage(stage, data,
                               [{"values": c.values, "superseded": False} for c in chem],
                               [{"quantity": m.quantity, "category": m.material.category,
-                                "superseded": False} for m in mats],
+                                "point": m.addition_point, "superseded": False} for m in mats],
                               [{"end_time": d.end_time, "reason_id": d.reason_id,
-                                "superseded": False} for d in dels], specs)
+                                "superseded": False} for d in dels], specs, entry)
     return {"heat": heat_summary(db, h),
-            "stage": stage, "def": STAGE_DEFS[stage],
+            "stage": stage, "def": stage_def_for(entry, stage),
             "status": rec.status if rec else "pending",
             "version": rec.version if rec else 0,
             "data": data,
@@ -180,6 +186,8 @@ def get_stage(heat_no: str, stage: str, user: M.User = Depends(get_current_user)
                            "code": m.material.code, "name": m.material.name,
                            "qty": m.quantity, "unit": m.unit,
                            "time": m.addition_time and m.addition_time.isoformat(),
+                           "point": m.addition_point or "process",
+                           "category": m.material.category,
                            "remarks": m.remarks} for m in mats],
             "delays": [{"id": d.id, "start": d.start_time.isoformat(),
                         "end": d.end_time and d.end_time.isoformat(),
@@ -221,8 +229,8 @@ def save_stage(heat_no: str, stage: str, body: StageSave,
                                                   superseded=False).all()
     merged = dict(rec.data or {}); merged.update(body.data or {})
     merged.update(auto_calculations(stage, merged,
-                                    [{"quantity": m.quantity, "category": m.material.category}
-                                     for m in mats]))
+                                    [{"quantity": m.quantity, "category": m.material.category,
+                                      "point": m.addition_point} for m in mats]))
     rec.data = merged
     if rec.status == "pending":
         rec.status = "in_progress"
@@ -278,6 +286,10 @@ class MatIn(BaseModel):
     quantity: float
     unit: str | None = None
     addition_time: str | None = None
+    # Where in the process this went in — the tile that recorded it says so.
+    # "charge" and "tapping" additions live on the same stage as "process"
+    # ones and would otherwise be indistinguishable.
+    point: str = "process"             # charge|tapping|process
     remarks: str = ""
 
 
@@ -291,9 +303,11 @@ def add_material(heat_no: str, stage: str, body: MatIn,
     if not mat:
         raise HTTPException(404, "Material not in Material Master")
     at = datetime.fromisoformat(body.addition_time) if body.addition_time else None
+    point = body.point if body.point in ("charge", "tapping", "process") else "process"
     db.add(M.MaterialAddition(heat_id=h.id, stage=stage, material_id=mat.id,
                               quantity=body.quantity, unit=body.unit or mat.unit,
-                              addition_time=at, remarks=body.remarks))
+                              addition_time=at, addition_point=point,
+                              remarks=body.remarks))
     # refresh autos (e.g. total charge weight)
     rec = db.query(M.StageRecord).filter_by(heat_id=h.id, stage=stage).first()
     if rec:
@@ -301,9 +315,9 @@ def add_material(heat_no: str, stage: str, body: MatIn,
                                                       superseded=False).all()
         merged = dict(rec.data or {})
         merged.update(auto_calculations(stage, merged,
-                                        [{"quantity": x.quantity,
+                                        [{"quantity": x.quantity, "point": x.addition_point,
                                           "category": x.material.category} for x in mats]
-                                        + [{"quantity": body.quantity,
+                                        + [{"quantity": body.quantity, "point": point,
                                             "category": mat.category}]))
         rec.data = merged
     db.commit(); return {"ok": True}
@@ -648,7 +662,7 @@ def decide_correction(cid: int, body: DecideIn,
     mats = db.query(M.MaterialAddition).filter_by(heat_id=cr.heat_id, stage=cr.stage,
                                                   superseded=False).all()
     merged.update(auto_calculations(cr.stage, merged,
-                                    [{"quantity": x.quantity,
+                                    [{"quantity": x.quantity, "point": x.addition_point,
                                       "category": x.material.category} for x in mats]))
     rec.data = merged
     rec.version += 1
