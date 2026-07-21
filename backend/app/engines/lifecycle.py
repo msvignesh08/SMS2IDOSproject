@@ -83,7 +83,7 @@ def create_heat(db: Session, user: M.User, grade_id: int, heat_no: str | None,
     if heat_no:
         heat_no = heat_no.strip().upper()
         if db.query(M.Heat).filter_by(heat_no=heat_no).first():
-            raise ValueError(f"Duplicate Heat Number {heat_no} — heat numbers are unique and never reused (5.3).")
+            raise ValueError(f"Duplicate Heat Number {heat_no} — heat numbers are unique and never reused.")
     else:
         heat_no = next_heat_no(db, entry_stage)
     m = plant_time.now_moment()
@@ -138,7 +138,7 @@ def stage_gates(db: Session, heat: M.Heat) -> dict:
             continue
         if st == "vd" and heat.route not in ("VD-2", "VD-3"):
             if heat.route is None:
-                gates[st] = {"state": "awaiting_route", "reason": "Available only if selected in the LRF Route Decision (6E.14)."}
+                gates[st] = {"state": "awaiting_route", "reason": "Available only if selected in the LRF Route Decision."}
             else:
                 gates[st] = {"state": "not_in_route", "reason": f"Route {heat.route} bypasses Vacuum Degassing."}
             continue
@@ -159,11 +159,11 @@ def stage_gates(db: Session, heat: M.Heat) -> dict:
                              "reason": f"Where shall this heat go next? Select the process route "
                                        f"after {entry.upper()} ({_opts})."}
             elif st == "caster" and heat.route is None:
-                gates[st] = {"state": "locked", "reason": "Route decision pending at LRF (6D.16)."}
+                gates[st] = {"state": "locked", "reason": "Route decision pending at LRF."}
             else:
                 gates[st] = {"state": "done" if submitted else "open", "reason": ""}
         elif st in req:
-            gates[st] = {"state": "locked", "reason": "Previous stage not yet submitted (5.2 gated workflow)."}
+            gates[st] = {"state": "locked", "reason": "Previous stage not yet submitted."}
         if st in req:
             prev_done = prev_done and submitted
     return gates
@@ -220,12 +220,12 @@ def select_refining_route(db: Session, heat: M.Heat, user: M.User, choice: str):
 
 def select_route(db: Session, heat: M.Heat, user: M.User, route: str):
     if route not in ("VD-2", "VD-3", "BC-2", "BC-3"):
-        raise ValueError("Route must be one of VD-2, VD-3, BC-2, BC-3 (5.8).")
+        raise ValueError("Route must be one of VD-2, VD-3, BC-2, BC-3.")
     lrf = db.query(M.StageRecord).filter_by(heat_id=heat.id, stage="lrf").first()
     chem = db.query(M.ChemistrySample).filter_by(heat_id=heat.id, stage="lrf",
                                                  superseded=False).count()
     if chem == 0:
-        raise ValueError("Chemistry shall be validated before route selection (6D.16) — record LRF chemistry first.")
+        raise ValueError("Chemistry must be validated before route selection — record LRF chemistry first.")
     old = heat.route
     heat.route = route
     if route.startswith("VD"):
@@ -250,7 +250,7 @@ def select_route(db: Session, heat: M.Heat, user: M.User, route: str):
 def submit_stage(db: Session, heat: M.Heat, stage: str, user: M.User) -> list[dict]:
     """Validate + submit a stage. Returns blocking findings if any (empty = success)."""
     if heat.status == "locked":
-        raise ValueError("Heat is locked and read-only (6H.11).")
+        raise ValueError("Heat is locked and read-only.")
     gates = stage_gates(db, heat)
     g = gates.get(stage, {})
     if g.get("state") not in ("open", "done"):
@@ -269,7 +269,7 @@ def submit_stage(db: Session, heat: M.Heat, stage: str, user: M.User) -> list[di
     errors = [f for f in findings if f["level"] == "error"]
     if stage == "lrf" and heat.route is None:
         errors.append({"level": "error", "tile": "Process Route Decision",
-                       "message": "Route selection is mandatory before LRF submission (6D.16)."})
+                       "message": "Route selection is mandatory before LRF submission."})
     emit(db, heat, "validation", user,
          f"{STAGE_DEFS[stage]['title']}: {len(errors)} error(s), "
          f"{len([f for f in findings if f['level']=='warning'])} warning(s).",
@@ -344,12 +344,12 @@ def final_validation(db: Session, heat: M.Heat) -> list[dict]:
                              "message": f"{STAGE_DEFS[st]['title']} is not submitted."})
     if heat.route is None:
         findings.append({"level": "error", "tile": "Route",
-                         "message": "Missing route selection (5.12)."})
+                         "message": "No route has been selected for this heat."})
     q = recs.get("quality")
     qdec = (q.data or {}).get("decision") if q else None
     if qdec not in ("Accepted", "Accepted with Remarks"):
         findings.append({"level": "error", "tile": "Quality",
-                         "message": f"Quality approval is mandatory before final submission (6G.13). Current decision: {qdec or 'none'}."})
+                         "message": f"Quality has not accepted this heat. Current decision: {qdec or 'none'}."})
     return findings
 
 
@@ -366,10 +366,15 @@ def approve(db: Session, heat: M.Heat, user: M.User, level: int, remarks: str = 
     if level in existing:
         raise ValueError(f"Level {level} is already approved.")
     if any(l not in existing for l in range(1, level)):
-        raise ValueError("Approvals must follow the chain: Operator → Shift Engineer → Shift Incharge (5.13).")
-    errs = final_validation(db, heat)
-    if [e for e in errs if e["level"] == "error"]:
-        raise ValueError("Validation errors prevent approval — resolve them in Review (6H.8).")
+        raise ValueError("Approvals must follow the chain: Operator → Shift Engineer → Shift Incharge.")
+    errs = [e for e in final_validation(db, heat) if e["level"] == "error"]
+    if errs:
+        # Say WHAT is blocking. The checks below already know exactly which
+        # stage or decision is outstanding; reporting only "there are errors"
+        # made the approver hunt for something the system could simply name.
+        items = " · ".join(e["message"].rstrip(".") for e in errs[:4])
+        more = f" · and {len(errs) - 4} more" if len(errs) > 4 else ""
+        raise ValueError(f"This heat is not ready for approval yet — {items}{more}.")
     m = plant_time.now_moment()
     sig = f"SIG:{user.employee_id}:{m.at.isoformat()}"
     db.add(M.Approval(heat_id=heat.id, scope="final", level=level,
@@ -404,7 +409,7 @@ def lock_heat(db: Session, heat: M.Heat, user: M.User):
 
 def unlock_heat(db: Session, heat: M.Heat, admin: M.User, reason: str):
     if admin.role.name != "Administrator":
-        raise ValueError("Unlocking requires Administrator authorization (6H.11).")
+        raise ValueError("Unlocking requires Administrator authorization.")
     if not reason.strip():
         raise ValueError("Unlock reason is mandatory — every unlock is audited.")
     heat.status = "review"

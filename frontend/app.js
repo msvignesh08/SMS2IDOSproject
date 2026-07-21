@@ -1517,7 +1517,7 @@ async function viewHeatWorkspace(heatNo, stageArg) {
           <button class="rg-opt" data-rg="LRF-5"><b>LRF-5</b><span>Direct to LRF-5 · bypasses ZPF</span></button>
           <button class="rg-opt" data-rg="LRF-6"><b>LRF-6</b><span>Direct to LRF-6 · bypasses ZPF</span></button>
         </div>`
-        : `<div class="finding warning"><b>note</b><div>Your role (${esc(S.user.role)}) cannot select the route — the Shift Engineer decides (5.8).</div></div>`}
+        : `<div class="finding warning"><b>note</b><div>Your role (${esc(S.user.role)}) cannot select the route — the Shift Engineer decides.</div></div>`}
       </div>` : ""}
     ${heatRail({...h, steps: railSteps(h)})}
     <div class="stage-tabs">${tabs}</div>
@@ -2084,7 +2084,7 @@ function routeTile(h, readonly) {
     <div class="sub">The route decision belongs to the Shift Engineer. LRF chemistry must be recorded first.
       ${h.route ? `Current route: <b>${h.route}</b>. Re-selection is audited on the timeline.` : "No route selected yet."}</div>
     <div class="tiles">${["VD-2", "VD-3", "BC-2", "BC-3"].map(opt).join("")}</div>
-    ${!canRoute ? `<div class="finding warning" style="margin-top:12px"><b>note</b><div>Your role (${esc(S.user.role)}) cannot select the route — the Shift Engineer decides (5.8).</div></div>` : ""}
+    ${!canRoute ? `<div class="finding warning" style="margin-top:12px"><b>note</b><div>Your role (${esc(S.user.role)}) cannot select the route — the Shift Engineer decides.</div></div>` : ""}
     <div class="modal-foot"><button class="btn" onclick="UI.closeModal()">Close</button></div>`, m => {
     if (readonly || !canRoute) return;
     $$("[data-r]", m).forEach(el => el.onclick = async () => {
@@ -2471,7 +2471,7 @@ async function viewCalculator() {
   const grades = S.masters.grades;
   const els = ["C","Si","Mn","S","P","Cr","Ni","Al","Cu","Ti"];
   $("#view").innerHTML = `
-    <h2 class="pg">Metallurgical Calculator <small>alloys · flux · cored wire — deterministic, never guesses (7.10)</small></h2>
+    <h2 class="pg">Metallurgical Calculator <small>alloys · flux · cored wire — deterministic, never guesses</small></h2>
     <div class="grid cols-2">
       <div class="card glass">
         <h3>Ferro alloy requirement</h3>
@@ -2692,7 +2692,7 @@ async function adminUsers(body) {
     </div>`;
   $("#au-new").onclick = () => UI.modal(`
     <h3>Create user</h3>
-    <div class="sub">Critical operation — your password is required to confirm (11.7).</div>
+    <div class="sub">Critical operation — your password is required to confirm.</div>
     <div class="fgrid">
       <label class="fld"><span>Employee ID *</span><input id="nu-emp" style="text-transform:uppercase"></label>
       <label class="fld"><span>Full name *</span><input id="nu-name"></label>
@@ -2721,7 +2721,7 @@ async function adminUsers(body) {
     const u = users.find(x=>x.id===+id);
     UI.modal(`
       <h3>Manage ${esc(u.name)} <span class="mono muted">(${esc(u.employee_id)})</span></h3>
-      <div class="sub">Changes require your password. Users are archived, never deleted (10.13).</div>
+      <div class="sub">Changes require your password. Users are archived, never deleted.</div>
       <div class="fgrid">
         <label class="fld"><span>Role</span><select id="eu-role">${roles.map(r=>`<option value="${r.id}" ${r.id===u.role_id?"selected":""}>${esc(r.name)}</option>`).join("")}</select></label>
         <label class="fld"><span>Account state</span>
@@ -2756,7 +2756,7 @@ async function adminRoles(body) {
                     "reports.view","reports.export","search","knowledge.write","heats.create","heats.abort","admin"];
   body.innerHTML = `
     <div class="card glass">
-      <div class="row spread"><h3 style="margin:0">Roles & permissions — configuration, not code (10.4)</h3>
+      <div class="row spread"><h3 style="margin:0">Roles &amp; permissions — configuration, not code</h3>
         <button class="btn primary small" id="ar-new">＋ Create role</button></div>
       <table class="t" style="margin-top:10px"><thead><tr><th>Role</th><th>Type</th><th>Permissions</th></tr></thead><tbody>
         ${roles.map(r=>`<tr><td><b>${esc(r.name)}</b></td>

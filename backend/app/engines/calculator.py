@@ -103,7 +103,7 @@ def alloy_requirements(heat_weight_t, current: dict, target: dict,
 
     return {"ok": True, "lines": lines,
             "predicted": {k: round(v, 4) for k, v in achieved.items()},
-            "message": "Calculated values — review before acceptance (3.8 Human Authority)."}
+            "message": "Calculated values — review before acceptance."}
 
 
 def flux_recommendation(heat_weight_t, sulphur_pct=None) -> dict:

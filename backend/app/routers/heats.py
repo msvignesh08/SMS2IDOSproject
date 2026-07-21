@@ -26,7 +26,7 @@ def _heat(db, heat_no) -> M.Heat:
 
 def _guard_editable(heat: M.Heat, user: M.User):
     if heat.status == "locked" and user.role.name != "Administrator":
-        raise HTTPException(423, "Heat is locked and read-only (6H.11). Administrator unlock is required for corrections.")
+        raise HTTPException(423, "Heat is locked and read-only. Administrator unlock is required for corrections.")
     if heat.aborted:
         raise HTTPException(423, f"Heat is aborted: {heat.abort_reason}")
 
@@ -414,7 +414,7 @@ def refining_route(heat_no: str, body: RefiningIn,
     _guard_editable(h, user)
     if user.role.name not in ("Shift Engineer", "Shift Incharge", "Administrator",
                               "Super Administrator", "Owner"):
-        raise HTTPException(403, "The process route decision belongs to the Shift Engineer (5.8).")
+        raise HTTPException(403, "The process route decision belongs to the Shift Engineer.")
     try:
         L.select_refining_route(db, h, user, body.route)
         db.commit()
@@ -429,7 +429,7 @@ def route(heat_no: str, body: RouteIn,
     h = _heat(db, heat_no)
     _guard_editable(h, user)
     if user.role.name not in ("Shift Engineer", "Shift Incharge", "Administrator"):
-        raise HTTPException(403, "The route decision belongs to the Shift Engineer (5.8).")
+        raise HTTPException(403, "The route decision belongs to the Shift Engineer.")
     try:
         L.select_route(db, h, user, body.route)
         db.commit()
