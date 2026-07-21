@@ -41,3 +41,17 @@ services:
       # No code changes are needed — config.py already reads this variable.
       - key: SMS2_DATABASE_URL
         sync: false            # set it in the Render dashboard when ready
+      # ── PLANT HISTORY ────────────────────────────────────────────────────
+      # Set to 1 to load the committed history bundle (667 real heats) on the
+      # first boot. Render's free tier has NO SHELL, so tools/seed_history.py
+      # cannot be run after a deploy — this is how the data gets in. Runs once
+      # (heats already present are skipped) and never blocks start-up.
+      - key: SMS2_SEED_HISTORY
+        sync: false
+      # ── CREDENTIALS ──────────────────────────────────────────────────────
+      # SET THESE. Without them the seed falls back to the defaults published
+      # in app/seed.py, which would be the live passwords of a public site.
+      - key: SMS2_ADMIN_PASSWORD
+        sync: false
+      - key: SMS2_SEED_PASSWORD
+        sync: false

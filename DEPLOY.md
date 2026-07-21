@@ -56,10 +56,23 @@ variable and `database.py` switches drivers automatically.
 
 The real history from the company's workbook ships with the repo as a compact
 bundle (`backend/app/data/history.json.gz`, ~150 KB), so the server never needs
-Excel or `openpyxl`. After the service is up:
+the spreadsheet.
 
-1. Open the Render **Shell** for the web service (or SSH to your own server).
-2. `cd backend`
+**On Render's free tier there is no Shell**, so set an environment variable and
+the service loads it itself on the next boot:
+
+```
+SMS2_SEED_HISTORY = 1
+```
+
+The log then shows `SMS-2: history backfill seeded 667 heats`. It runs once —
+later restarts print `history already present — backfill skipped`.
+
+**If you do have shell access** (a paid instance, or your own server), run it
+explicitly instead — same result, with a preview available:
+
+1. `cd backend`
+2. `python tools/seed_history.py --dry-run`   ← optional preview
 3. `python tools/seed_history.py`
 
 It loads 667 heats with their consumption, refining, casting and delay records,
