@@ -13,6 +13,19 @@
 #  Deploy: push this file, then on Render choose  New → Blueprint  and point
 #  it at the repository. See DEPLOY.md for the click-by-click version.
 # ═══════════════════════════════════════════════════════════════════════════
+# ── DATABASE ───────────────────────────────────────────────────────────────
+# Declared here so Render creates it and wires the URL itself. Render's free
+# disk is EPHEMERAL: on SQLite the database resets on every deploy and every
+# wake from sleep, which is fine for a demo but loses real production entry.
+#
+# NOTE: a free Postgres instance EXPIRES (Render currently gives 30 days).
+# For the plant's real deployment this must be a paid instance or your own
+# server — otherwise the database disappears and takes the heats with it.
+databases:
+  - name: sms2-db
+    plan: free
+    region: singapore
+
 services:
   - type: web
     name: sms2-idos
@@ -27,20 +40,15 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
-      # ── DATABASE ─────────────────────────────────────────────────────────
-      # Left unset on purpose, so the app falls back to SQLite and boots with
-      # zero setup — it seeds masters and demo users automatically.
-      #
-      # Render's free disk is EPHEMERAL: the database resets on every deploy
-      # or restart. For a demo that is fine (it re-seeds). For anything you
-      # want to keep, create a free PostgreSQL instance on Render and set:
-      #
-      #   SMS2_DATABASE_URL = <the Internal Database URL Render gives you>
-      #
-      # then add `psycopg2-binary>=2.9` to backend/requirements.txt.
-      # No code changes are needed — config.py already reads this variable.
+      # Wired automatically from the database declared above — nothing to
+      # paste, and no chance of pasting the External URL by mistake. The
+      # driver (psycopg2-binary) is already in requirements.txt, and
+      # config.py normalises Render's `postgres://` scheme, which SQLAlchemy
+      # 2 rejects.
       - key: SMS2_DATABASE_URL
-        sync: false            # set it in the Render dashboard when ready
+        fromDatabase:
+          name: sms2-db
+          property: connectionString
       # ── PLANT HISTORY ────────────────────────────────────────────────────
       # Set to 1 to load the committed history bundle (667 real heats) on the
       # first boot. Render's free tier has NO SHELL, so tools/seed_history.py

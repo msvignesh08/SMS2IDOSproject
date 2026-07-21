@@ -20,6 +20,12 @@ _DEFAULT_DB = f"sqlite:///{os.path.join(DATA_DIR, 'sms2_idos.db')}"
 # would hand SQLAlchemy `create_engine("")` and crash the server on boot. Treat
 # blank (or whitespace) as "not configured" and use the SQLite default.
 DATABASE_URL = (os.environ.get("SMS2_DATABASE_URL") or "").strip() or _DEFAULT_DB
+# Render and Heroku hand out URLs beginning `postgres://`, a scheme SQLAlchemy
+# 1.4+ removed. Left alone it fails at start-up with "Can't load plugin:
+# sqlalchemy.dialects:postgres" — an error that says nothing about the real
+# cause. Normalise it rather than making the operator hand-edit a pasted URL.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = "postgresql://" + DATABASE_URL[len("postgres://"):]
 
 SESSION_HOURS = int(os.environ.get("SMS2_SESSION_HOURS", "12"))
 BACKUP_DIR = os.environ.get("SMS2_BACKUP_DIR", os.path.join(DATA_DIR, "backups"))

@@ -38,17 +38,29 @@ Sign in with the demo accounts from the README (`ADMIN` / `admin@123`).
   automatically, so it always comes back working — but production entries you
   create will not survive a restart.
 
-### Making data persist
+### Making data persist — PostgreSQL
 
-Create a free PostgreSQL instance on Render, then:
+**This is already set up.** `render.yaml` declares a PostgreSQL database
+(`sms2-db`) and wires `SMS2_DATABASE_URL` to it automatically, so deploying the
+blueprint creates both the web service and the database and connects them.
+Nothing to paste, and no way to paste the *External* URL by mistake.
 
-1. Add `psycopg2-binary>=2.9` to `backend/requirements.txt`.
-2. In the web service → **Environment**, set `SMS2_DATABASE_URL` to the
-   **Internal Database URL** Render shows for the database.
-3. Redeploy.
+The driver (`psycopg2-binary`) is in `requirements.txt`, and `config.py`
+normalises the `postgres://` scheme Render hands out — SQLAlchemy 2 removed
+that alias and would otherwise fail at start-up with an error that names the
+dialect rather than the cause.
 
-No code changes are needed — `backend/app/core/config.py` already reads that
-variable and `database.py` switches drivers automatically.
+Leaving `SMS2_DATABASE_URL` blank still falls back to SQLite, which is the
+right choice for a throwaway demo.
+
+> **The free database expires.** Render currently gives free PostgreSQL a
+> 30-day life. When it goes, the heats go with it. For the plant's real
+> deployment use a paid instance or your own server, and keep taking the
+> backups described in RECOVERY.md.
+
+**Backup and restore differ on PostgreSQL.** The in-app snapshot/restore in
+Admin → Backup uses SQLite's online-backup API and reports plainly that it does
+not apply; use `pg_dump` (see `deploy/backup.sh`) or your provider's snapshots.
 
 ---
 
