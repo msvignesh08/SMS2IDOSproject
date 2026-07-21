@@ -40,6 +40,12 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
+      # ── PLANT CLOCK ──────────────────────────────────────────────────────
+      # Render runs in UTC. Without this the shift engine reads the server's
+      # clock, so 17:39 in the shop is 12:09 on the host and B shift is
+      # reported as A — and heats are filed against the wrong shift and day.
+      - key: SMS2_PLANT_TZ
+        value: Asia/Kolkata
       # Wired automatically from the database declared above — nothing to
       # paste, and no chance of pasting the External URL by mistake. The
       # driver (psycopg2-binary) is already in requirements.txt, and

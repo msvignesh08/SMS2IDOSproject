@@ -20,7 +20,7 @@ def get_current_user(authorization: str | None = Header(None),
         raise HTTPException(401, "Not authenticated")
     token = authorization.removeprefix("Bearer ").strip()
     s = db.query(M.Session).filter_by(token=token, revoked=False).first()
-    if not s or s.expires_at < datetime.now():
+    if not s or s.expires_at < plant_time.plant_now():
         raise HTTPException(401, "Session expired — please sign in again")
     if not s.user.active or s.user.archived:
         raise HTTPException(403, "Account is deactivated")
@@ -58,7 +58,7 @@ def login(body: LoginIn, db: DBSession = Depends(get_db)):
         raise HTTPException(401, "Incorrect password. Please try again, or use \u2018Forgot password?\u2019 below.")
     token = new_session_token()
     db.add(M.Session(token=token, user_id=u.id,
-                     expires_at=datetime.now() + timedelta(hours=SESSION_HOURS)))
+                     expires_at=plant_time.plant_now() + timedelta(hours=SESSION_HOURS)))
     audit(db, u, "auth", "login")
     db.commit()
     m = plant_time.now_moment()

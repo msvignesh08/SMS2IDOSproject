@@ -51,7 +51,41 @@ def test_durations_cross_midnight():
     except ValueError:
         pass
 
+def test_plant_clock_ignores_server_timezone():
+    """The plant's clock must not be the SERVER's clock.
+
+    A cloud host runs in UTC. Read naively, 17:39 in an Indian shop is 12:09
+    on the server: B shift reported as A, and heats filed against the wrong
+    shift and plant day. SMS2_PLANT_TZ must make the server's own zone
+    irrelevant.
+    """
+    import os, importlib
+    from datetime import datetime, timezone
+    from app.core import plant_time as pt
+
+    prev = os.environ.get("SMS2_PLANT_TZ")
+    try:
+        os.environ["SMS2_PLANT_TZ"] = "Asia/Kolkata"
+        importlib.reload(pt)
+        if pt._TZ is None:           # no tz database on this machine
+            print("  (skipped: tzdata unavailable)")
+            return
+        utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        ist = pt.plant_now()
+        offset = round((ist - utc).total_seconds() / 3600, 1)
+        assert offset == 5.5, f"expected IST = UTC+5.5, got {offset}"
+        # and the shift follows the PLANT clock, not the server's
+        assert pt.now_moment().shift == pt.resolve(ist).shift
+    finally:
+        if prev is None:
+            os.environ.pop("SMS2_PLANT_TZ", None)
+        else:
+            os.environ["SMS2_PLANT_TZ"] = prev
+        importlib.reload(pt)
+
+
 if __name__ == "__main__":
     test_resolution(); test_plant_day_window()
     test_shift_windows_partition_plant_day(); test_durations_cross_midnight()
+    test_plant_clock_ignores_server_timezone()
     print("PLANT DATE ENGINE: ALL TESTS PASSED")

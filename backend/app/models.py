@@ -26,7 +26,14 @@ from .core.database import Base
 
 
 def now():
-    return datetime.now().replace(microsecond=0)
+    """Default for every stored timestamp — the PLANT's wall clock.
+
+    Must be the same clock the shift engine reads. If created_at came from a
+    UTC server while plant_day/shift came from the plant zone, a heat would be
+    stamped hours away from the shift it is filed under.
+    """
+    from .core.plant_time import plant_now
+    return plant_now()
 
 
 # ───────────────────────────── GOVERNANCE ─────────────────────────────

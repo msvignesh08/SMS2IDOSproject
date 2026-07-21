@@ -8,3 +8,7 @@ python-multipart>=0.0.9
 # dependency list. Unused when the URL is blank — SQLite remains the
 # zero-setup default for local runs and demos.
 psycopg2-binary>=2.9
+# IANA time-zone database. Ships with most Linux images but NOT with Windows
+# or slim containers; without it SMS2_PLANT_TZ cannot be resolved and the
+# shift engine silently falls back to the server's own clock.
+tzdata>=2024.1

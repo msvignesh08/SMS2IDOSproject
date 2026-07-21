@@ -25,10 +25,45 @@ single-timezone deployment). Derived plant_day / shift values are persisted
 on records for query speed, but this engine is the ONLY writer.
 """
 from __future__ import annotations
+import os
 from dataclasses import dataclass
 from datetime import datetime, date, time, timedelta
 
 PLANT_DAY_START = time(22, 0)          # 22:00 — frozen by the constitution
+
+# ── THE PLANT'S OWN CLOCK ─────────────────────────────────────────────────
+# `datetime.now()` returns the SERVER's local time. On a laptop in the plant
+# that is the plant's time; on a cloud host it is almost always UTC, and the
+# whole engine then reads the wrong wall clock — 17:39 in the shop becomes
+# 12:09 on the server, which is B shift reported as A. Because plant_day,
+# shift assignment, reports and the Gantt windows all derive from this, the
+# error is not cosmetic: heats get filed against the wrong shift and day.
+#
+# Set SMS2_PLANT_TZ to the plant's IANA zone (e.g. "Asia/Kolkata") and the
+# server's own timezone stops mattering. Unset, behaviour is exactly as
+# before: the machine's local time, which is right for an on-site install.
+_TZ_NAME = (os.environ.get("SMS2_PLANT_TZ") or "").strip()
+_TZ = None
+if _TZ_NAME:
+    try:
+        from zoneinfo import ZoneInfo
+        _TZ = ZoneInfo(_TZ_NAME)
+    except Exception as e:                      # bad name, or no tz database
+        print(f"SMS-2: SMS2_PLANT_TZ={_TZ_NAME!r} could not be loaded ({e}). "
+              f"Falling back to server local time — CHECK THE SHIFT DISPLAY.")
+
+
+def plant_now() -> datetime:
+    """Wall-clock time AT THE PLANT, whatever timezone the server runs in.
+
+    Returns a naive datetime, because every timestamp in SMS-2 is stored naive
+    in plant-local time (single-plant deployment). Converting to the plant zone
+    and then dropping the tzinfo keeps that contract while making the value
+    correct on a host running in UTC.
+    """
+    if _TZ is not None:
+        return datetime.now(_TZ).replace(tzinfo=None, microsecond=0)
+    return datetime.now().replace(microsecond=0)
 
 SHIFTS = (
     ("C", time(22, 0), time(6, 0)),    # first shift of the plant day
@@ -86,7 +121,7 @@ def resolve(at: datetime) -> PlantMoment:
 
 
 def now_moment() -> PlantMoment:
-    return resolve(datetime.now().replace(microsecond=0))
+    return resolve(plant_now())
 
 
 def plant_day_window(plant_day: date) -> tuple[datetime, datetime]:
