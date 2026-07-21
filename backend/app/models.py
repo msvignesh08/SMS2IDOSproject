@@ -190,6 +190,12 @@ class Heat(Base):
     created_at = Column(DateTime, default=now)
     locked_at = Column(DateTime, nullable=True)
     is_training = Column(Boolean, default=False, index=True)  # Sandbox/Training Mode
+    # Backfilled from the plant's historical records rather than entered here.
+    # Such a heat is finished and locked, and was never subject to this app's
+    # entry rules — so it is not judged against them (no validation findings,
+    # no "incomplete" styling). Flagged, never hidden: the timeline and audit
+    # trail still say plainly where it came from.
+    is_imported = Column(Boolean, default=False, index=True)
     aborted = Column(Boolean, default=False)
     abort_reason = Column(Text, default="")
     archived = Column(Boolean, default=False)

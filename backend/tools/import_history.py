@@ -341,6 +341,7 @@ class Importer:
             grade = self.resolve_grade(h["grade"])
             heat = M.Heat(heat_no=hno, grade_id=grade.id if grade else None,
                           status="locked", entry_stage=h["entry"],
+                          is_imported=True,
                           plant_day=h["day"], shift=(h["shift"] or moment.shift),
                           shift_engineer=h["data"].get("lrf", {}).get("shift_incharge", ""),
                           created_by=self.user.id if self.user else None,

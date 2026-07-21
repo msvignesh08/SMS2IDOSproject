@@ -105,7 +105,8 @@ def heat_summary(db, h: M.Heat):
             "route_refining": h.route_refining,
             "plant_day": h.plant_day.isoformat(), "shift": h.shift,
             "shift_engineer": h.shift_engineer,
-            "is_training": h.is_training, "aborted": h.aborted,
+            "is_training": h.is_training, "is_imported": bool(h.is_imported),
+            "aborted": h.aborted,
             "created_at": h.created_at.isoformat(sep=" "),
             "gates": gates}
 
@@ -167,12 +168,16 @@ def get_stage(heat_no: str, stage: str, user: M.User = Depends(get_current_user)
     specs = L.grade_specs_map(db, h.grade_id)
     data = (rec.data or {}) if rec else {}
     entry = h.entry_stage or "eaf"
-    findings = validate_stage(stage, data,
-                              [{"values": c.values, "superseded": False} for c in chem],
-                              [{"quantity": m.quantity, "category": m.material.category,
-                                "point": m.addition_point, "superseded": False} for m in mats],
-                              [{"end_time": d.end_time, "reason_id": d.reason_id,
-                                "superseded": False} for d in dels], specs, entry)
+    # A backfilled historical record was never entered through this app, so it
+    # is not measured against this app's entry rules — flagging a finished heat
+    # from the archive as "5 blocking" is noise the shift can do nothing about.
+    findings = [] if h.is_imported else validate_stage(
+        stage, data,
+        [{"values": c.values, "superseded": False} for c in chem],
+        [{"quantity": m.quantity, "category": m.material.category,
+          "point": m.addition_point, "superseded": False} for m in mats],
+        [{"end_time": d.end_time, "reason_id": d.reason_id,
+          "superseded": False} for d in dels], specs, entry)
     return {"heat": heat_summary(db, h),
             "stage": stage, "def": stage_def_for(entry, stage),
             "status": rec.status if rec else "pending",
@@ -445,7 +450,8 @@ def review(heat_no: str, user: M.User = Depends(get_current_user),
     from ..engines.reports import heat_report_data
     h = _heat(db, heat_no)
     return {"heat": heat_payload(db, h),
-            "validation": L.final_validation(db, h),
+            # Imported history carries no findings — see get_stage.
+            "validation": [] if h.is_imported else L.final_validation(db, h),
             "report": heat_report_data(db, h)}
 
 

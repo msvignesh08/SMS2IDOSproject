@@ -1477,6 +1477,8 @@ async function viewHeatWorkspace(heatNo, stageArg) {
       <div class="row">
         <span class="hr-no" style="font-size:24px">${h.heat_no}</span>
         <span class="tag ${h.status}">${h.status.replace("_", " ")}</span>
+        ${h.is_imported
+          ? `<span class="tag train" title="Backfilled from the plant's historical records — not entered through this system and carrying no approval signatures">archived history</span>` : ""}
         ${h.entry_stage === "zpf"
           ? `<span class="tag open" title="Melting furnace">melted in ZPF</span>` : ""}
         ${h.route_refining
@@ -1547,20 +1549,32 @@ async function renderStage(h, stage) {
   const def = S.stageDefs[stage];
   const readonly = h.status === "locked" || h.aborted;
 
+  // A backfilled historical heat is finished and locked. Measuring it against
+  // today's entry checklist would paint an archive record as unfinished work
+  // nobody can act on, so tiles report what IS recorded rather than what is
+  // missing. (The backend sends no findings for these heats either.)
+  const archived = !!h.is_imported;
+
   const tiles = def.tiles.map(t => {
     let state = "todo", subtitle = "";
     if (t.fields) {
       const req = t.fields.filter(f => f.req && !f.auto);
       const filled = req.filter(f => sd.data[f.key] !== undefined && sd.data[f.key] !== "" && sd.data[f.key] !== null);
       const any = t.fields.some(f => sd.data[f.key] !== undefined && sd.data[f.key] !== "" && sd.data[f.key] !== null);
-      state = req.length && filled.length === req.length ? "done" : any ? "part" : "todo";
-      subtitle = req.length ? `${filled.length}/${req.length} required` : `${t.fields.length} fields`;
+      const recorded = t.fields.filter(f => sd.data[f.key] !== undefined && sd.data[f.key] !== "" && sd.data[f.key] !== null).length;
+      state = archived ? (any ? "done" : "todo")
+            : req.length && filled.length === req.length ? "done" : any ? "part" : "todo";
+      subtitle = archived ? `${recorded} recorded`
+               : req.length ? `${filled.length}/${req.length} required` : `${t.fields.length} fields`;
     }
     if (t.chemistry) {
       const reqF = (t.fields || []).filter(f => f.req && !f.auto);
       const fOk = reqF.every(f => sd.data[f.key] !== undefined && sd.data[f.key] !== "" && sd.data[f.key] !== null);
-      state = sd.chemistry.length && fOk ? "done" : (sd.chemistry.length || (t.fields || []).some(f => sd.data[f.key])) ? "part" : "todo";
-      subtitle = `${sd.chemistry.length} sample(s)` + (reqF.length ? (fOk ? " · readings ✓" : ` · ${reqF.map(f => f.label).join(", ")} required`) : "");
+      state = archived ? (sd.chemistry.length ? "done" : "todo")
+            : sd.chemistry.length && fOk ? "done"
+            : (sd.chemistry.length || (t.fields || []).some(f => sd.data[f.key])) ? "part" : "todo";
+      subtitle = `${sd.chemistry.length} sample(s)` +
+        (archived || !reqF.length ? "" : fOk ? " · readings ✓" : ` · ${reqF.map(f => f.label).join(", ")} required`);
     }
     if (t.materials) {
       const rows = sd.materials.filter(m => matchCat(m, t.materials.category, t.materials.point || ""));
@@ -1588,8 +1602,13 @@ async function renderStage(h, stage) {
     <div class="row spread">
       <div class="row">
         <span class="tag ${sd.status}">${sd.status.replace("_", " ")}</span>
-        ${errs ? `<span class="tag error">${errs} blocking</span>` : `<span class="tag done">validation clear</span>`}
-        ${warns ? `<span class="tag warn">${warns} warning(s)</span>` : ""}
+        ${archived
+          /* Say why there is no validation rather than implying this record
+             passed today's checks — it was never measured against them. */
+          ? `<span class="tag train" title="Backfilled from the plant's historical records — not entered through this system, so it is not checked against current entry rules">archived history</span>`
+          : errs ? `<span class="tag error">${errs} blocking</span>`
+                 : `<span class="tag done">validation clear</span>`}
+        ${!archived && warns ? `<span class="tag warn">${warns} warning(s)</span>` : ""}
         <span class="muted small">Entry authorized: ${def.authorized.join(", ")}</span>
       </div>
       ${!readonly && sd.status !== "submitted" ? `
@@ -2138,6 +2157,7 @@ function calculatorTile(h) {
 async function renderReview(h, box) {
   const r = await GET(`/api/heats/${h.heat_no}/review`);
   const errs = r.validation.filter(f => f.level === "error");
+  const archivedHeat = !!h.is_imported;
   const approved = Object.fromEntries((r.heat.approvals || []).filter(a => a.decision === "approved").map(a => [a.level, a]));
   const chain = [[1, "Operator"], [2, "Shift Engineer"], [3, "Shift Incharge"]];
   const nextLevel = chain.find(([l]) => !approved[l])?.[0];
@@ -2146,12 +2166,14 @@ async function renderReview(h, box) {
     <div class="grid cols-2">
       <div class="card glass">
         <h3>Final validation (whole heat)</h3>
-        ${r.validation.length ? findingsHTML(r.validation)
+        ${archivedHeat ? `<div class="finding info"><b>archived</b><div>This heat was backfilled from the plant's historical records. It was never entered through this system, so it is <b>not</b> checked against current entry rules — an absence of findings here is not a pass.</div></div>`
+          : r.validation.length ? findingsHTML(r.validation)
           : `<div class="finding ok"><b>clear</b><div>All stages submitted, quality accepted, route recorded. Ready for the approval chain.</div></div>`}
       </div>
       <div class="card glass">
         <h3>Approval chain — digital signatures</h3>
-        ${chain.map(([l, role]) => {
+        ${archivedHeat ? `<div class="finding info"><b>no signatures</b><div>Historical record — the approval chain was not run in this system and no signatures were fabricated for it. Its origin is recorded on the timeline and in the audit trail.</div></div>` :
+        chain.map(([l, role]) => {
           const a = approved[l];
           if (a) return `<div class="finding ok"><b>L${l} ✓</b>
             <div><b>${esc(role)}</b> — ${esc(a.user)} · ${a.at}<br><span class="mono small muted">signed</span></div></div>`;
