@@ -238,6 +238,66 @@ def add_grade(body: GradeIn, user: M.User = Depends(require_perm("admin")),
     db.commit(); return {"ok": True, "id": g.id}
 
 
+class GradeSpecsIn(BaseModel):
+    specs: dict          # {element: {min, aim, max}} — the full set for the grade
+    name: str | None = None
+
+
+@router.put("/grades/{grade_id}/specs")
+def set_grade_specs(grade_id: int, body: GradeSpecsIn,
+                    user: M.User = Depends(require_perm("admin")),
+                    db: DBSession = Depends(get_db)):
+    """Set (or revise) a grade's target chemistry.
+
+    Specs could only be given at creation, so any grade that arrived another
+    way — auto-registered at heat entry, or imported with the plant's history —
+    had no window for the validation engine to check chemistry against, and no
+    aim for the calculator to work toward, with no way to supply one.
+
+    An element sent with all three values zero is treated as "not specified"
+    and its row is removed, so a spec can be cleared as well as corrected.
+    """
+    g = db.get(M.SteelGrade, grade_id)
+    if not g:
+        raise HTTPException(404, "Grade not found")
+    before = {s.element: {"min": s.min_pct, "aim": s.aim_pct, "max": s.max_pct}
+              for s in g.specs}
+    existing = {s.element: s for s in g.specs}
+    kept = set()
+    for el, v in (body.specs or {}).items():
+        el = str(el).strip()
+        if not el:
+            continue
+        mn, aim, mx = (float(v.get("min") or 0), float(v.get("aim") or 0),
+                       float(v.get("max") or 0))
+        if mn == aim == mx == 0:
+            continue                      # blank row — nothing specified
+        if mx and mn and mn > mx:
+            raise HTTPException(400, f"{el}: minimum {mn} is above maximum {mx}.")
+        if aim and mn and mx and not (mn <= aim <= mx):
+            raise HTTPException(400, f"{el}: aim {aim} is outside its own {mn}–{mx} window.")
+        kept.add(el)
+        row = existing.get(el)
+        if row:
+            row.min_pct, row.aim_pct, row.max_pct = mn, aim, mx
+        else:
+            db.add(M.GradeSpec(grade_id=g.id, element=el,
+                               min_pct=mn, aim_pct=aim, max_pct=mx))
+    for el, row in existing.items():       # elements the admin cleared
+        if el not in kept:
+            db.delete(row)
+    if body.name:
+        g.name = body.name.strip()
+    # Grade specs decide which heats are flagged off-spec, so a change to them
+    # is a change to the validation rules: record what it was, not just that it
+    # happened.
+    audit(db, user, "admin", "grade_specs_updated", detail=(
+        f"{g.code}: {before or 'no specs'} -> "
+        f"{ {el: v for el, v in (body.specs or {}).items() if el in kept} }")[:900])
+    db.commit()
+    return {"ok": True, "code": g.code, "elements": sorted(kept)}
+
+
 class MaterialIn(BaseModel):
     code: str
     name: str

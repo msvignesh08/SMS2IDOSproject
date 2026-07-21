@@ -2796,9 +2796,13 @@ async function adminMasters(body) {
       <div class="card glass">
         <div class="row spread"><h3 style="margin:0">Steel grades (${mm.grades.length})</h3>
           <button class="btn small primary" id="am-grade">＋ Grade</button></div>
+        <div class="small muted" style="margin-bottom:var(--sp-2)">Select a grade to set its aim chemistry. Grades without a specification are not chemistry-checked.</div>
         <div class="scroll-panel md"><table class="t"><tbody>
-          ${mm.grades.map(g=>`<tr><td><b>${esc(g.code)}</b></td>
-            <td class="small mono muted">${Object.entries(g.specs).map(([e,s])=>`${e} ${s.min}-${s.max}`).join(" · ")}</td></tr>`).join("")}
+          ${mm.grades.map(g=>`<tr>
+            <td><a class="link" data-grade="${g.id}">${esc(g.code)}</a></td>
+            <td class="small mono muted">${Object.keys(g.specs).length
+              ? Object.entries(g.specs).map(([e,s])=>`${e} ${s.min}-${s.max}${s.aim ? ` aim ${s.aim}` : ""}`).join(" · ")
+              : `<span class="tag warn">no spec</span>`}</td></tr>`).join("")}
         </tbody></table></div>
       </div>
       <div class="card glass">
@@ -2834,6 +2838,49 @@ async function adminMasters(body) {
       toast("Heat series updated", "ok"); adminMasters(body);
     } catch (e) { toast(e.message, "err"); }
   };
+  /* Edit an existing grade's target chemistry. Grades arrive here three ways —
+     seeded, auto-registered when an engineer types a new code at heat entry,
+     or imported with the plant's history — and only the first ever had specs.
+     Without a window the validation engine cannot flag an off-spec heat and
+     the calculator has no aim to work toward. */
+  body.querySelectorAll("[data-grade]").forEach(a => a.onclick = () => {
+    const g = mm.grades.find(x => x.id === +a.dataset.grade);
+    if (!g) return;
+    const els = ["C","Si","Mn","S","P","Ti","Cr","Ni","Al","Cu","Mo","V","B","N","Nb"];
+    const val = (e,k) => (g.specs[e] && g.specs[e][k] != null && g.specs[e][k] !== 0) ? g.specs[e][k] : "";
+    UI.modal(`
+      <h3>Aim chemistry — ${esc(g.code)}</h3>
+      <div class="sub">Min / aim / max per element, in weight %. A heat whose chemistry falls outside
+        min–max is flagged at validation; the aim is what the metallurgical calculator works toward.
+        Leave a row blank to leave that element unspecified.</div>
+      <table class="t"><thead><tr><th>Element</th><th>Min %</th><th>Aim %</th><th>Max %</th></tr></thead><tbody>
+        ${els.map(e=>`<tr><td><b>${e}</b></td>
+          ${["min","aim","max"].map(k=>`<td><input type="number" step="0.0001" class="num-input"
+            data-e="${e}.${k}" value="${val(e,k)}"></td>`).join("")}</tr>`).join("")}
+      </tbody></table>
+      <div class="login-err" id="gs-err" role="alert"></div>
+      <div class="modal-foot"><button class="btn" onclick="UI.closeModal()">Cancel</button>
+        <button class="btn primary" id="gs-save">Save chemistry</button></div>`, m => {
+      $("#gs-save", m).onclick = async () => {
+        const specs = {};
+        els.forEach(e => {
+          const row = {};
+          ["min","aim","max"].forEach(k => {
+            const v = $(`[data-e="${e}.${k}"]`, m).value;
+            if (v !== "") row[k] = +v;
+          });
+          if (Object.keys(row).length)
+            specs[e] = {min: row.min ?? 0, aim: row.aim ?? 0, max: row.max ?? 0};
+        });
+        try {
+          const r = await PUT(`/api/admin/grades/${g.id}/specs`, {specs});
+          toast(`${r.code}: chemistry saved (${r.elements.length} element(s))`, "ok");
+          UI.closeModal(); S.masters = null; adminMasters(body);
+        } catch (e) { $("#gs-err", m).textContent = e.message; }
+      };
+    });
+  });
+
   $("#am-grade").onclick = () => {
     const els = ["C","Si","Mn","S","P","Ti","Cr","Ni","Al","Cu"];
     UI.modal(`
