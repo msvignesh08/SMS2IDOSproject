@@ -2251,6 +2251,10 @@ async function viewHeats() {
         <select id="hf-status"><option value="">all</option>
           ${["eaf","zpf","lrf","vd","caster","quality","review","locked","aborted"]
             .map(s=>`<option>${s}</option>`).join("")}</select></label>
+      <label class="fld"><span>Furnace</span>
+        <select id="hf-entry"><option value="">both furnaces</option>
+          <option value="eaf">EAF (E series)</option>
+          <option value="zpf">ZPF (F series)</option></select></label>
       <label class="fld"><span>Shift</span>
         <select id="hf-shift"><option value="">all</option><option>A</option><option>B</option><option>C</option></select></label>
       <label class="fld"><span>Type</span>
@@ -2260,14 +2264,17 @@ async function viewHeats() {
     </div>`;
   const render = () => {
     const st = $("#hf-status").value, sh = $("#hf-shift").value,
+          en = $("#hf-entry").value,
           ty = $("#hf-type").value, q = $("#hf-q").value.trim().toLowerCase();
     const rows = heats.filter(h =>
       (!st || h.status === st) && (!sh || h.shift === sh) &&
+      (!en || (h.entry_stage || "eaf") === en) &&
       (ty !== "prod" || !h.is_training) && (ty !== "train" || h.is_training) &&
       (!q || [h.heat_no, h.grade, h.shift_engineer].join(" ").toLowerCase().includes(q)))
       .map(h => `
       <tr>
         <td class="mono"><a class="link" href="#/heat/${h.heat_no}">${h.heat_no}</a></td>
+        <td>${(h.entry_stage || "eaf") === "zpf" ? "ZPF" : "EAF"}</td>
         <td>${esc(h.grade || "")}</td>
         <td><span class="tag ${h.status}">${h.status.replace("_"," ")}</span>
             ${h.is_training ? `<span class="tag train">T</span>` : ""}</td>
@@ -2275,17 +2282,17 @@ async function viewHeats() {
         <td>${esc(h.shift_engineer || "")}</td>
         <td><button class="btn small" onclick="showTimeline('${h.heat_no}')">Timeline</button></td>
       </tr>`).join("");
-    $("#heat-table-body").innerHTML = rows || `<tr><td colspan="8" class="empty">No heats match the filters.</td></tr>`;
+    $("#heat-table-body").innerHTML = rows || `<tr><td colspan="9" class="empty">No heats match the filters.</td></tr>`;
   };
   $("#view").innerHTML = `
     <h2 class="pg">Heat Tracking <small>${heats.length} heats in the register — every heat traceable forever</small></h2>
     ${filters}
     <div class="card glass" style="overflow:auto">
       <table class="t"><thead><tr>
-        <th>Heat No</th><th>Grade</th><th>Status</th><th>Route</th><th>Plant Day</th><th>Shift</th><th>Shift Engineer</th><th></th>
+        <th>Heat No</th><th>Furnace</th><th>Grade</th><th>Status</th><th>Route</th><th>Plant Day</th><th>Shift</th><th>Shift Engineer</th><th></th>
       </tr></thead><tbody id="heat-table-body"></tbody></table>
     </div>`;
-  ["hf-status","hf-shift","hf-type","hf-q"].forEach(id => $("#"+id).addEventListener("input", render));
+  ["hf-status","hf-entry","hf-shift","hf-type","hf-q"].forEach(id => $("#"+id).addEventListener("input", render));
   render();
 }
 

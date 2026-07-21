@@ -84,6 +84,7 @@ def create_heat(body: HeatCreate, user: M.User = Depends(require_perm("heats.cre
 
 @router.get("/heats")
 def list_heats(status: str | None = None, active: bool = False, training: bool | None = None,
+               entry_stage: str | None = None,
                limit: int = 100, user: M.User = Depends(get_current_user),
                db: DBSession = Depends(get_db)):
     q = db.query(M.Heat).filter(M.Heat.archived == False)  # noqa: E712
@@ -93,7 +94,18 @@ def list_heats(status: str | None = None, active: bool = False, training: bool |
         q = q.filter(M.Heat.status.notin_(["locked", "aborted"]))
     if training is not None:
         q = q.filter(M.Heat.is_training == training)
-    heats = q.order_by(M.Heat.created_at.desc()).limit(limit).all()
+    if entry_stage in ("eaf", "zpf"):
+        q = q.filter(M.Heat.entry_stage == entry_stage)
+    # Order by the PLANT's chronology, not by when the row happened to be
+    # written. Backfilled history all shares one created_at — 667 rows, two
+    # distinct timestamps — so ordering on it is a mass tie that the database
+    # breaks by insertion order. That buried every EAF heat behind the ZPF
+    # ones and pushed them past the row limit, making them invisible.
+    # plant_day is meaningful for imported and live heats alike; created_at
+    # then separates heats within a day, and heat_no makes it deterministic.
+    heats = (q.order_by(M.Heat.plant_day.desc(), M.Heat.created_at.desc(),
+                        M.Heat.heat_no.desc())
+             .limit(limit).all())
     return [heat_summary(db, h) for h in heats]
 
 
