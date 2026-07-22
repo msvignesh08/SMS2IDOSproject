@@ -2920,9 +2920,66 @@ async function adminMasters(body) {
           <label class="fld"><span>Padding</span><input id="hs-pad" type="number" value="${series.pad}" style="width:80px"></label>
           <button class="btn primary" id="hs-save">Set active series</button>
         </div>
-        <div class="small muted">Next heat will be <b class="mono">${esc(series.prefix)}${String(series.next_number).padStart(series.pad,"0")}</b>. Equipment master: ${mm.equipment.length} units (${mm.equipment.filter(e=>e.kind==="ladle").length} ladles, VD-2/3, BC-2/3, BF-1/2).</div>
+        <div class="small muted">Next heat will be <b class="mono">${esc(series.prefix)}${String(series.next_number).padStart(series.pad,"0")}</b>. Equipment master: ${mm.equipment.length} units (${mm.equipment.filter(e=>e.kind==="ladle").length} ladles, 4 VD tanks, 4 transfer cars, BC-2/3).</div>
+      </div>
+      <div class="card glass" style="grid-column:1/-1">
+        <div class="row spread"><h3 style="margin:0">Excel connection — Microsoft 365</h3>
+          <span id="xl-state" class="tag pending">checking…</span></div>
+        <div id="xl-body" class="small muted">Loading…</div>
       </div>
     </div>`;
+
+  /* ── Microsoft 365 workbook ──────────────────────────────────────────
+     Reads the plant's live sheet straight from the company account and loads
+     it with the same parser used for the file by hand. Credentials live in
+     the server environment only — this panel reports whether the secret is
+     SET, never what it is. */
+  (async () => {
+    const el = $("#xl-body"), badge = $("#xl-state");
+    if (!el) return;
+    const fmtResult = r => !r ? "" : (r.ok
+      ? `<span class="tag done">last run OK</span> ${r.heats_written ?? r.heats_found ?? 0} heat(s)`
+        + (r.skipped_existing ? ` · ${r.skipped_existing} already present` : "")
+        + (r.unmapped_columns ? ` · <span class="tag warn">${r.unmapped_columns} unmapped column(s)</span>` : "")
+      : `<span class="tag error">last run failed</span> <span class="mono small">${esc(r.error || "")}</span>`);
+    const draw = st => {
+      badge.className = "tag " + (st.configured ? "done" : "pending");
+      badge.textContent = st.configured ? "configured" : "not configured";
+      el.innerHTML = st.configured
+        ? `<div>Workbook <b class="mono">${esc(st.file)}</b> · tenant <span class="mono">${esc(st.tenant)}</span>
+             · client <span class="mono">${esc(st.client_id)}</span> · secret ${st.secret_set ? "set ✓" : "MISSING"}</div>
+           <div style="margin-top:6px">Last sync: ${st.last_sync ? esc(st.last_sync) : "never"} ${fmtResult(st.last_result)}</div>
+           <div class="row" style="margin-top:10px">
+             <button class="btn small" id="xl-dry">Check connection</button>
+             <button class="btn small primary" id="xl-sync">Sync now</button>
+           </div>
+           <div class="small muted" style="margin-top:6px">Loading is idempotent — heat numbers already present are skipped, never duplicated.</div>`
+        : `<div>Not configured. Set these on the server (never in the repository), then reload:</div>
+           <ul class="mono small" style="margin:6px 0 0 18px">
+             ${["SMS2_GRAPH_TENANT","SMS2_GRAPH_CLIENT_ID","SMS2_GRAPH_CLIENT_SECRET","SMS2_GRAPH_FILE"]
+               .map(k => `<li>${k}${st.missing.includes(k) ? ` <span class="tag error">missing</span>` : ` <span class="tag done">set</span>`}</li>`).join("")}
+           </ul>
+           <div class="small muted" style="margin-top:8px">Needs an Azure AD app registration with admin consent for <b>Files.Read.All</b> (or Sites.Read.All), and outbound access to Microsoft from this server.</div>`;
+      const run = async dry => {
+        const btn = $(dry ? "#xl-dry" : "#xl-sync"); if (!btn) return;
+        const was = btn.textContent; btn.disabled = true; btn.textContent = "Working…";
+        try {
+          const r = await POST("/api/admin/excel-connection/sync", {dry_run: dry});
+          if (r.ok) toast(dry ? `Connection OK — ${r.heats_found} heat(s) readable, ${r.would_write} new`
+                              : `Synced — ${r.heats_written} heat(s) loaded`, "ok", 5000);
+          else toast(r.error, "err", 9000);
+        } catch (e) { toast(e.message, "err", 9000); }
+        btn.disabled = false; btn.textContent = was;
+        adminMasters(body);
+      };
+      const d = $("#xl-dry"), sy = $("#xl-sync");
+      if (d) d.onclick = () => run(true);
+      if (sy) sy.onclick = () => run(false);
+    };
+    try { draw(await GET("/api/admin/excel-connection")); }
+    catch (e) { badge.className = "tag error"; badge.textContent = "unavailable";
+                el.textContent = e.message; }
+  })();
   $("#hs-save").onclick = async () => {
     try {
       await POST("/api/admin/heat-series", {prefix: $("#hs-prefix").value, next_number: +$("#hs-next").value, pad: +$("#hs-pad").value});

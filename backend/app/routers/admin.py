@@ -722,3 +722,35 @@ def credentials_file(body: CredFileIn,
             return {"path": path, "content": f.read()}
     except Exception as e:
         raise HTTPException(500, f"Ledger unavailable: {e}")
+
+
+# ─────────── Microsoft 365 Excel connection ───────────
+
+@router.get("/excel-connection")
+def excel_connection(user: M.User = Depends(require_perm("admin")),
+                     db: DBSession = Depends(get_db)):
+    """Configuration state and the outcome of the last sync.
+
+    Reports whether the client secret is SET, never what it is — this response
+    reaches the browser.
+    """
+    from ..engines import msgraph
+    return msgraph.status(db)
+
+
+class ExcelSyncIn(BaseModel):
+    dry_run: bool = False
+
+
+@router.post("/excel-connection/sync")
+def excel_sync(body: ExcelSyncIn,
+               user: M.User = Depends(require_perm("admin")),
+               db: DBSession = Depends(get_db)):
+    """Fetch the workbook from Microsoft 365 and load it.
+
+    Returns a result rather than raising: a broken integration must not read
+    as a broken plant, and the screen needs to show WHAT failed. The load
+    itself is idempotent — heat numbers already present are skipped.
+    """
+    from ..engines import msgraph
+    return msgraph.sync(db, user, dry_run=body.dry_run)

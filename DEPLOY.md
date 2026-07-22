@@ -132,3 +132,35 @@ portfolio demo. Before this is used for anything real:
    `.login-demo` block).
 3. Keep `credentials.txt` out of git — it is already in `.gitignore` and must
    stay there. It stores issued passwords in plain text.
+
+---
+
+## Reading the workbook straight from Microsoft 365
+
+Admin → Masters carries an **Excel connection** panel. Configured, it pulls the
+plant's live workbook from the company Microsoft account and loads it with the
+same parser used for the file by hand — so the quirks that took a day to find
+(multi-row headers, merged dates, transposed caster dates) are handled once.
+
+IT registers an Azure AD application and grants **admin consent** for
+`Files.Read.All` (or `Sites.Read.All` for a SharePoint library). Then set on the
+server — never in the repository:
+
+```
+SMS2_GRAPH_TENANT         directory (tenant) ID
+SMS2_GRAPH_CLIENT_ID      application (client) ID
+SMS2_GRAPH_CLIENT_SECRET  client secret
+SMS2_GRAPH_FILE           e.g. drives/{drive-id}/root:/Plant/IDOS.xlsx:
+```
+
+The panel shows which variables are set, the file it points at, and the last
+sync result. **Check connection** fetches and parses without writing;
+**Sync now** loads. Loading is idempotent — heat numbers already present are
+skipped, never duplicated.
+
+The secret is read only at call time. No endpoint returns it, it never reaches
+the browser, and it is never written to the audit trail.
+
+The server needs outbound access to `login.microsoftonline.com` and
+`graph.microsoft.com`. That is fine on Render and commonly blocked on a plant
+intranet — if it is, keep using the committed bundle instead.
