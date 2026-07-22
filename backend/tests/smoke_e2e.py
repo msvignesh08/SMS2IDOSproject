@@ -325,26 +325,23 @@ assert g7["days"] == 7
 # heat's data is dated 2026-07-16), not on the day the keyboard was used.
 gm = call("GET", "/api/gantt?mode=machine&span=day&plant_day=2026-07-16", token=t_se)
 lanes = [r["key"] for r in gm["rows"]]
-# The whole plant is on the board, in process order: EAF, ZPF, the LRF section
-# (four lanes -- each LRF's two transfer cars), the four VD tanks, then the
-# casters. The cars are keyed by the LRF that owns them: each LRF calls its two
-# cars LTC-1 and LTC-2, so the number alone is ambiguous.
+# The whole plant is on the board, in process order: EAF, ZPF, both LRFs, the
+# four VD tanks, then the casters. The ladle transfer cars are not lanes -- a
+# car moves a ladle, it does not process it.
 assert "HM-BAY" not in gm["machines"], "the hot metal bay is no longer a lane"
-assert "LRF-5" not in gm["machines"] and "LRF-6" not in gm["machines"],     "the plain LRF lanes are replaced by their transfer-car lanes"
-_order = ["EAF", "ZPF",
-          "LRF5-LTC-1", "LRF5-LTC-2", "LRF6-LTC-1", "LRF6-LTC-2",
+assert not [m for m in gm["machines"] if "LTC" in m],     f"transfer cars are not machine lanes: {gm['machines']}"
+_order = ["EAF", "ZPF", "LRF-5", "LRF-6",
           "VD-2.1", "VD-2.2", "VD-3.1", "VD-3.2",
           "BC-2", "BC-3", "QLAB"]
 assert gm["machines"] == _order, f"lane order is EAF, ZPF, LRF, VD, BC: {gm['machines']}"
 
-# Refining draws in the car lane. This heat ran on LRF-6, so it belongs to an
-# LRF-6 car and never to LRF-5's identically-numbered one.
-lrf6 = next((r for r in gm["rows"] if r["key"] == "LRF6-LTC-1"), None)
-assert lrf6 and lrf6["bars"], "LRF bar must land in an LRF-6 car lane per lrf_unit"
+# This heat recorded lrf_unit = LRF-6, so its refining belongs to LRF-6.
+lrf6 = next((r for r in gm["rows"] if r["key"] == "LRF-6"), None)
+assert lrf6 and lrf6["bars"], "LRF bar must land in the LRF-6 lane per lrf_unit"
 assert lrf6["bars"][0]["start"].startswith("2026-07-16 09:15"),     f"LRF bar must carry the operator-entered process time: {lrf6['bars'][0]}"
-other = next((r for r in gm["rows"] if r["key"] == "LRF5-LTC-1"), None)
-assert other is not None and not other["bars"],     "LRF-5's LTC-1 is a different car and must stay empty"
-print("GANTT LANES OK — EAF, ZPF, 4 LRF car lanes, 4 VD tanks, 2 casters, in process order")
+other = next((r for r in gm["rows"] if r["key"] == "LRF-5"), None)
+assert other is not None and not other["bars"], "this heat never ran on LRF-5"
+print("GANTT LANES OK — EAF, ZPF, LRF-5/6, 4 VD tanks, 2 casters, in process order")
 
 # Machine intelligence board
 mb = call("GET", "/api/machines", token=t_se)

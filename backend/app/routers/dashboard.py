@@ -252,24 +252,25 @@ def shift_handover(user: M.User = Depends(get_current_user),
 # ══════════════════ SMART SWITCHABLE INDUSTRIAL GANTT CHART v2 ══════════════════
 # THE HEART OF SMS-2 (Constitution S.4). Five switchable modes:
 #   heat · machine · shift · delays · production   — each VS TIME.
-# Machine lanes per Constitution: HM · EAF · ZPF · LRF-5 · LRF-6 · VD-2 · VD-3 ·
-# LTC-1 · LTC-2 · BC-2 · BC-3 (+ Quality Lab). Digital Time Machine windows:
-# any plant day, 1–31 day spans. Every module feeds it.
+# Digital Time Machine windows: any plant day, 1–31 day spans. Every module
+# feeds it.
 
+# Lanes run in PROCESS ORDER — EAF, ZPF, LRF, VD, BC — so the board reads top
+# to bottom the way the steel actually travels.
+#
 # Every physical unit gets a lane, always drawn — on a machine board an EMPTY
 # LANE IS A FACT: that unit is idle and available.
 #
-# There are FOUR ladle transfer cars, two serving each LRF, and the plant calls
-# both of an LRF's cars "LTC-1" and "LTC-2". The number alone is therefore
-# ambiguous: identity is (LRF unit + car number), which is what the lane key
-# encodes and the label spells out.
+# The ladle transfer cars are deliberately NOT lanes. A car moves a ladle
+# between units it does not process it, so a car lane could only ever redraw
+# the refining or casting window a second time; and the workbook has never
+# recorded a car number, so three of four lanes stood permanently empty and
+# read as "idle" rather than "never measured".
 GANTT_MACHINES = [
     ("EAF", "Electric Arc Furnace", ["eaf"]),
     ("ZPF", "Zero Power Furnace", ["zpf"]),
-    ("LRF5-LTC-1", "LRF-5 · LTC-1", ["lrf"]),
-    ("LRF5-LTC-2", "LRF-5 · LTC-2", ["lrf"]),
-    ("LRF6-LTC-1", "LRF-6 · LTC-1", ["lrf"]),
-    ("LRF6-LTC-2", "LRF-6 · LTC-2", ["lrf"]),
+    ("LRF-5", "Ladle Refining Furnace 5", ["lrf"]),
+    ("LRF-6", "Ladle Refining Furnace 6", ["lrf"]),
     ("VD-2.1", "VD Tank 2.1", ["vd"]),
     ("VD-2.2", "VD Tank 2.2", ["vd"]),
     ("VD-3.1", "VD Tank 3.1", ["vd"]),
@@ -304,24 +305,18 @@ def _proc_dt(v):
         return None
 
 
-def _machine_for(stage: str, heat: M.Heat, data: dict | None = None,
-                 ltc_no: str | None = None) -> str | None:
+def _machine_for(stage: str, heat: M.Heat, data: dict | None = None) -> str | None:
     data = data or {}
     if stage == "eaf":
         return "EAF"
     if stage == "zpf":
         return "ZPF"
     if stage == "lrf":
-        # Refining draws on the transfer car that carried the ladle, so the
-        # LRF section of the board is four lanes, not two. `ltc_no` is a
-        # CASTER field, passed in by the caller — the LRF record cannot know
-        # it. Falls back to the LRF's first car: the workbook never recorded a
-        # car number, so keying strictly on it would erase every historical
-        # refining bar, and an empty board is a worse lie than an approximate
-        # lane. Same reasoning as HM_canon_vd's legacy tank mapping.
+        # The operator's own entry first; route_refining only names an LRF when
+        # the route decision picked one directly, and is "ZPF" for any heat
+        # that went through the ZPF, so it cannot lead.
         rr = heat.route_refining if heat.route_refining in ("LRF-5", "LRF-6") else None
-        unit = data.get("lrf_unit") or rr or "LRF-5"
-        return _ltc_lane(heat, {"ltc_no": ltc_no or "LTC-1"}, unit)
+        return data.get("lrf_unit") or rr or "LRF-5"
     if stage == "vd":
         # The tank the heat actually sat in: the operator's entry first, then
         # the route (which IS the tank now), and finally the legacy degasser
@@ -358,32 +353,6 @@ def HM_canon_vd(v):
     return f"VD-{m.group(1)}.{m.group(2) or '1'}"
 
 
-def _ltc_lane(heat: M.Heat, data: dict | None = None,
-              lrf_unit: str | None = None) -> str | None:
-    """Which physical transfer car — (LRF unit + car number).
-
-    Both of an LRF's cars are called LTC-1 and LTC-2, so the number alone
-    cannot identify one; LRF-5's LTC-1 and LRF-6's LTC-1 are different cars.
-
-    `lrf_unit` comes from the heat's LRF RECORD, which is the only reliable
-    source: route_refining holds an LRF only when the route decision picked
-    one directly, and is "ZPF" for any heat that went through the ZPF first —
-    which would silently file every such heat against LRF-5's cars.
-    """
-    car = str((data or {}).get("ltc_no") or "").strip().upper().replace(" ", "")
-    if not car:
-        return None
-    n = re.search(r"([12])", car)
-    if not n:
-        return None
-    unit = str(lrf_unit or "").strip().upper()
-    if unit not in ("LRF-5", "LRF-6"):
-        unit = heat.route_refining if heat.route_refining in ("LRF-5", "LRF-6") else None
-    if not unit:
-        return None                      # unknown LRF — no honest lane to pick
-    return f"LRF{unit[-1]}-LTC-{n.group(1)}"
-
-
 def _collect_window(db, w0, w1, now_at, include_locked=True):
     """Fuse every module's data intersecting [w0,w1] — the single feed."""
     # No created_at cutoff: a heat's bars live on the plant day of its
@@ -395,14 +364,6 @@ def _collect_window(db, w0, w1, now_at, include_locked=True):
     picked = []
     for h in heats:
         recs = db.query(M.StageRecord).filter_by(heat_id=h.id).all()
-        # Which LRF this heat used — needed to tell LRF-5's transfer cars from
-        # LRF-6's, since both call their cars LTC-1 and LTC-2.
-        _lrf_unit = next((( r.data or {}).get("lrf_unit")
-                          for r in recs if r.stage == "lrf"), None)
-        # The car number lives on the CASTER record, but the LRF bar needs it
-        # to choose its lane, so resolve it once per heat rather than per bar.
-        _ltc_no = next((( r.data or {}).get("ltc_no")
-                        for r in recs if r.stage == "caster"), None)
         bars = []
         for r in recs:
             if not r.started_at:
@@ -427,7 +388,7 @@ def _collect_window(db, w0, w1, now_at, include_locked=True):
                 continue
             bar = {"heat_no": h.heat_no, "stage": r.stage,
                    "title": STAGE_TITLES[r.stage],
-                   "machine": _machine_for(r.stage, h, d, _ltc_no),
+                   "machine": _machine_for(r.stage, h, d),
                    "start": max(b0, w0).isoformat(sep=" "),
                    "end": min(b1, w1).isoformat(sep=" "),
                    "done": r.status in ("submitted", "approved"),
@@ -437,7 +398,6 @@ def _collect_window(db, w0, w1, now_at, include_locked=True):
             if r.stage == "caster":
                 bar["billet_t"] = float(d.get("billet_weight") or 0)
                 bar["ltc"] = d.get("ltc_no")
-                bar["ltc_lane"] = _ltc_lane(h, d, _lrf_unit)
             bars.append(bar)
         if not bars or (h.status == "locked" and not include_locked):
             continue
@@ -505,7 +465,7 @@ def smart_gantt(mode: str = "heat", span: str = "day", plant_day: str | None = N
             delays = [d for p in picked for d in p["delays"] if d["machine"] == code]
             events = [e for p in picked for e in p["events"] if e["machine"] == code]
             # MACHINE MODE SHOWS THE WHOLE PLANT — every lane, always.
-            # VD, LTC and ZPF lanes used to be dropped when no heat had used
+            # VD and ZPF lanes used to be dropped when no heat had used
             # them in the window. That optimised away real information: on a
             # machine board an EMPTY LANE IS A FACT — that unit is idle and
             # available. Hiding it makes the plant look smaller than it is and
