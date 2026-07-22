@@ -178,3 +178,45 @@ the browser, and it is never written to the audit trail.
 The server needs outbound access to `login.microsoftonline.com` and
 `graph.microsoft.com`. That is fine on Render and commonly blocked on a plant
 intranet — if it is, keep using the committed bundle instead.
+
+---
+
+## The AI Production Engineer's reasoning layer
+
+Admin → the AI page reports which brain is answering. Two exist and they are a
+floor and a ceiling, not alternatives:
+
+- **Rules engine** (`engines/insights.py`) — deterministic, offline, always
+  there. Window statistics, trend detection, alerting, keyword-matched
+  answers. This is what a plant with no internet gets, and it never regresses.
+- **Reasoning layer** (`engines/ai_brain.py`) — when a key is set, questions go
+  to Claude with **read-only** tools over the plant's own database, so answers
+  come from this plant's heats rather than from general steelmaking knowledge.
+
+Set on the server, never in the repository:
+
+```
+ANTHROPIC_API_KEY   the key
+SMS2_AI_MODEL       optional, default claude-opus-4-8
+SMS2_AI_EFFORT      optional — low|medium|high|xhigh|max, default high
+```
+
+`pip install -r requirements.txt` brings the client in. **With no key the app
+behaves exactly as before** — the deterministic engine answers, and the screen
+says so rather than letting an operator assume they got reasoning.
+
+**What leaves the plant when it is on.** The question, plus whatever the tools
+return for it: heat numbers, process values, chemistry, delays. No
+credentials, no passwords, no audit trail. Nothing is written back — every
+tool is a `SELECT`, and there is no writing tool at all, which is how the
+Constitution's read-only rule for the AI Production Engineer is enforced.
+
+That is a real disclosure decision, not a footnote: on a plant intranet with
+no outbound access the reasoning layer simply never engages. Leave the key
+unset and SMS-2 remains fully offline.
+
+**Cost.** Opus 4.8 is $5 / $25 per million tokens in/out. The persona and tool
+definitions are prompt-cached, so repeat questions bill the cached prefix at
+about a tenth of that. `claude-fable-5` is available via `SMS2_AI_MODEL` for
+the hardest reasoning — it is roughly double the price and requires 30-day
+data retention on the account, so it is not the default.

@@ -3491,7 +3491,7 @@ async function adminCorrections(body) {
 }
 
 /* ═══════ THE AI PRODUCTION ENGINEER (Constitution S.6) ═══════ */
-const AI_STATE = {mode: "production_engineer"};
+const AI_STATE = {mode: "production_engineer", history: []};
 
 async function viewAI() {
   setTitle("AI Production Engineer");
@@ -3541,16 +3541,45 @@ async function viewAI() {
     AI_STATE.mode = k;
     $$("#ai-modes .stage-tab").forEach(b => b.classList.toggle("active", b.dataset.m === k));
   };
+  /* Render the answer's light markdown WITHOUT opening an XSS hole: escape
+     first, so any HTML in the model's text is already inert, then apply a
+     fixed set of transforms to the escaped string. Nothing the model writes
+     can become a tag. */
+  const aiText = t => esc(t)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/^\s*[-*]\s+(.*)$/gm, '<li>$1</li>')
+    .replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>')
+    .replace(/
+{2,}/g, '</p><p>')
+    .replace(/
+/g, '<br>');
+
   const ask = async q => {
     $("#ai-answer").innerHTML = `<div class="card glass empty">Analyzing plant records…</div>`;
     try {
-      const a = await POST("/api/ai/ask", {question: q, mode: AI_STATE.mode});
+      const a = await POST("/api/ai/ask",
+        {question: q, mode: AI_STATE.mode, history: AI_STATE.history});
+      // Two shapes arrive here: the reasoning layer's, and the deterministic
+      // engine's. The screen names which one answered rather than letting an
+      // operator assume they got reasoning when the plant was offline.
+      const reasoned = a.source === "claude";
+      const badge = reasoned
+        ? `<span class="tag done" title="${esc(a.model || "")}">reasoned over plant data</span>`
+        : `<span class="tag" title="Offline rules engine — no reasoning model configured or reachable">rules engine</span>`;
+      const foot = reasoned
+        ? (a.tools_used || []).length
+            ? `Read: ${[...new Set(a.tools_used)].map(esc).join(" · ")}`
+            : "Answered without reading plant records."
+        : (a.facts || []).map(esc).join(" · ");
+      AI_STATE.history = (a.history_next) || AI_STATE.history;
       $("#ai-answer").innerHTML = `
         <div class="card glass accent">
-          <div class="row spread"><h3 style="margin:0">${esc(a.persona)}</h3>
-            <span class="tag">${esc(q.slice(0, 60))}</span></div>
-          <div class="ai-ans" style="margin-top:8px">${esc(a.answer)}</div>
-          <div class="small muted" style="margin-top:10px">${a.facts.map(esc).join(" · ")}</div>
+          <div class="row spread"><h3 style="margin:0">${esc(a.persona || "AI Production Engineer")}</h3>
+            <div class="row" style="gap:6px">${badge}<span class="tag">${esc(q.slice(0, 60))}</span></div></div>
+          <div class="ai-ans" style="margin-top:8px"><p>${aiText(a.answer || "")}</p></div>
+          ${a.degraded ? `<div class="small muted" style="margin-top:8px">Reasoning layer unavailable — answered by the offline engine. <span class="mono">${esc(a.degraded)}</span></div>` : ""}
+          <div class="small muted" style="margin-top:10px">${foot}</div>
         </div>`;
     } catch (e) { toast(e.message, "err"); }
   };

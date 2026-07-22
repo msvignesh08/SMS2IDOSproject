@@ -8,6 +8,10 @@ python-multipart>=0.0.9
 # dependency list. Unused when the URL is blank — SQLite remains the
 # zero-setup default for local runs and demos.
 psycopg2-binary>=2.9
+# Claude API client for the AI Production Engineer's reasoning layer. Optional
+# at runtime: with no ANTHROPIC_API_KEY the app never imports it and falls back
+# to the deterministic insights engine, which is what an offline plant gets.
+anthropic>=0.70
 # IANA time-zone database. Ships with most Linux images but NOT with Windows
 # or slim containers; without it SMS2_PLANT_TZ cannot be resolved and the
 # shift engine silently falls back to the server's own clock.
