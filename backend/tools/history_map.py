@@ -428,12 +428,29 @@ def canon_unit(v, kind):
     s = norm_head(v).upper().replace(" ", "")
     if not s:
         return None
+    # A value carrying ANOTHER unit's prefix is not this unit. Without this a
+    # bare digit search reads the "2" out of "BC-2" and files a caster-routed
+    # heat onto a VD tank.
+    prefixes = {"lrf": "LRF", "vd": "VD", "ccm": ("BC", "CCM")}
+    other = {p for k, p in prefixes.items() if k != kind}
+    for grp in other:
+        for p in (grp if isinstance(grp, tuple) else (grp,)):
+            if s.startswith(p):
+                return None
     digits = re.findall(r"\d", s)
     n = digits[0] if digits else None
     if kind == "lrf":
         return f"LRF-{n}" if n in ("5", "6") else None
     if kind == "vd":
-        return f"VD-{n}" if n in ("2", "3") else None
+        # The route IS the tank now (VD-2.1 / 2.2 / 3.1 / 3.2). The workbook
+        # only ever names the degasser — "VD-2", or a bare 2.1 — so a plain
+        # degasser resolves to its FIRST tank: the heat used one of that
+        # degasser's two, and .1 is the only defensible choice. Better a real
+        # tank than a route value the app no longer accepts.
+        if n not in ("2", "3"):
+            return None
+        sub = re.search(rf"{n}[.\-]([12])", s)
+        return f"VD-{n}.{sub.group(1) if sub else '1'}"
     if kind == "ccm":
         return f"BC-{n}" if n in ("2", "3") else None
     return None

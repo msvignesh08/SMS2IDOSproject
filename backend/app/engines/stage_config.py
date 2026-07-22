@@ -18,6 +18,27 @@ def F(key, label, type="number", req=False, auto=False, options=None, unit="", s
     return {"key": key, "label": label, "type": type, "req": req,
             "auto": auto, "options": options or [], "unit": unit, "step": step}
 
+# ── VACUUM DEGASSING ──────────────────────────────────────────────────────
+# The plant runs FOUR tanks, two per degasser, and the route decision picks the
+# tank itself rather than the degasser. Declared once and imported everywhere
+# it is tested — the route law, the gates, the Gantt lanes, the equipment
+# master and the pickers all read this tuple, so a fifth tank is one edit.
+VD_ROUTES = ("VD-2.1", "VD-2.2", "VD-3.1", "VD-3.2")
+CASTER_ROUTES = ("BC-2", "BC-3")
+ALL_ROUTES = VD_ROUTES + CASTER_ROUTES
+
+
+def is_vd_route(route: str | None) -> bool:
+    """True when a route sends the heat through vacuum degassing.
+
+    Kept as a function, not a `startswith` scattered through the code: the
+    legacy values "VD-2"/"VD-3" still sit on heats recorded before the tanks
+    were split, and they must keep answering True or those heats lose their
+    VD stage.
+    """
+    return bool(route) and route.startswith("VD")
+
+
 STAGE_DEFS = {
     # ── MODULE 1 — ELECTRIC ARC FURNACE (6A charge mix + 6B furnace) ──
     # Charging and melting are one operation on one machine, recorded on one
@@ -129,14 +150,14 @@ STAGE_DEFS = {
 
     # ── MODULE 3 — ZPF (6C) ───────────────────────────────────────────
     "zpf": {
-        "title": "ZPF",
+        "title": "Zero Power Furnace",
         "icon": "🌪",
         "authorized": ["ZPF Operator", "Operator", "Shift Engineer", "Shift Incharge", "Administrator"],
         "tiles": [
             # ── CHARGE MIX — shown ONLY when the heat was MELTED in the ZPF.
             # The ZPF is a primary melting furnace in its own right: heats
             # numbered F… are charged and tapped here and never see the EAF.
-            # For an EAF heat that comes here as the optional post-EAF de-phos
+            # For an EAF heat that comes here as the optional secondary-refining
             # step, these tiles are hidden — it already charged at the furnace.
             # See stage_def_for(); `charge` marks the tiles it filters.
             {"key": "general", "label": "General Information", "icon": "🟦", "charge": True, "fields": [
@@ -292,7 +313,7 @@ STAGE_DEFS = {
         "optional": True,   # only on VD routes
         "tiles": [
             {"key": "vacuum", "label": "Vacuum Operation", "icon": "🌀", "fields": [
-                F("vd_tank", "VD / Tank No.", "select", options=["VD-2", "VD-3"]),
+                F("vd_tank", "VD Tank", "select", options=list(VD_ROUTES)),
                 F("vd_start", "VD Start Time", "time", req=True),
                 F("argon_vd", "Argon (VD)", unit="Nm³"),
                 F("nitrogen_vd", "Nitrogen (VD)", unit="Nm³"),
@@ -480,7 +501,7 @@ def required_stages(route: str | None, refining: str | None = None,
     """THE PROCESS ROUTE LAW: every heat follows its OWN route.
     A heat is melted in ONE primary furnace — the EAF or the ZPF — and only
     that one is on its route. For an EAF heat the ZPF remains the optional
-    post-EAF de-phos step, included only when the route decision selected it
+    post-EAF refining step, included only when the route decision selected it
     (or legacy data already exists). VD is included ONLY on a VD route.
     Nothing is forced — two heats of the same grade may take different paths."""
     if entry_stage == "zpf":
@@ -490,7 +511,7 @@ def required_stages(route: str | None, refining: str | None = None,
         if refining == "ZPF" or has_zpf_data:
             base.append("zpf")
     base.append("lrf")
-    if route in ("VD-2", "VD-3"):
+    if is_vd_route(route):
         base.append("vd")
     return base + ["caster", "quality", "review"]
 
@@ -503,7 +524,7 @@ def stage_def_for(entry_stage: str, stage: str) -> dict:
 
     The ZPF carries a Charge Mix because heats can be melted there — but only
     for heats that actually started there. An EAF heat arriving at the ZPF as
-    the optional post-EAF de-phos step already charged at the furnace, so
+    the optional post-EAF refining step already charged at the furnace, so
     showing it a second charge section would invite the same tonnage to be
     entered twice. Tiles marked `charge` are dropped in that case.
 

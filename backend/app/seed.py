@@ -156,8 +156,13 @@ MATERIALS = [
 EQUIPMENT = (
     [("BF-1", "blast_furnace"), ("BF-2", "blast_furnace"),
      ("EAF-1", "eaf"), ("ZPF-1", "zpf"), ("LRF-1", "lrf"), ("LRF-2", "lrf"),
-     ("LRF-5", "lrf"), ("LRF-6", "lrf"), ("LTC-1", "ltc"), ("LTC-2", "ltc"),
-     ("VD-2", "vd"), ("VD-3", "vd"), ("BC-2", "caster"), ("BC-3", "caster")]
+     ("LRF-5", "lrf"), ("LRF-6", "lrf"),
+     # Four transfer cars: two per LRF. The plant calls both of an LRF's cars
+     # LTC-1 and LTC-2, so the equipment code carries the LRF that owns it.
+     ("LRF5-LTC-1", "ltc"), ("LRF5-LTC-2", "ltc"),
+     ("LRF6-LTC-1", "ltc"), ("LRF6-LTC-2", "ltc"),
+     ("VD-2.1", "vd"), ("VD-2.2", "vd"), ("VD-3.1", "vd"), ("VD-3.2", "vd"),
+     ("BC-2", "caster"), ("BC-3", "caster")]
     + [(f"LD-{i:02d}", "ladle") for i in range(1, 16)]
 )
 

@@ -84,7 +84,6 @@
      re-declared all eleven swatches as hardcoded gradients in a JS template
      string, guaranteeing the two would drift apart the first time a colour
      was tuned. Both now read from these. */
-  --st-charge:linear-gradient(90deg,#FF9A3D,#FF5C3D);   /* HM-BAY charge window */
   --st-eaf:linear-gradient(90deg,#FFC53D,#FF7A3D);
   --st-zpf:linear-gradient(90deg,#FF8A5C,#FF4D7A);
   --st-lrf:linear-gradient(90deg,#B44DFF,#FF4DA6);
@@ -92,8 +91,10 @@
   --st-caster:linear-gradient(90deg,#22E3A2,#00B8D9);
   --st-quality:linear-gradient(90deg,#FFE07A,#FFB13D);
   --st-review:linear-gradient(90deg,#8FE3C8,#37C2A0);
-  --st-delay:repeating-linear-gradient(135deg,rgba(229,72,77,.75) 0 5px,rgba(229,72,77,.35) 5px 10px);
-  --st-shutdown:repeating-linear-gradient(135deg,rgba(180,10,40,.9) 0 5px,rgba(60,0,10,.85) 5px 10px);
+  /* Legend swatches mirror the Gantt overlays exactly — same hue, same hatch
+     angle — so the key reads as the thing it explains. */
+  --st-delay:repeating-linear-gradient(135deg,rgba(229,72,77,.75) 0 5px,rgba(229,72,77,.15) 5px 10px);
+  --st-shutdown:repeating-linear-gradient(45deg,rgba(204,119,34,.85) 0 5px,rgba(204,119,34,.15) 5px 10px);
   --st-event-route:#A78BFA;   /* route decision — deliberately not cyan */
 
   /* ── PREMIUM GRADIENTS (moved here from a second :root block) ──────── */
@@ -655,7 +656,6 @@ main#view > *{animation:viewin .38s cubic-bezier(.2,.8,.25,1) both}
   box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.55); animation:pulse 1.6s ease-in-out infinite}
 /* stage personalities */
 /* Stage colours come from the tokens so the legend cannot drift from the bars. */
-.sg-bar[data-stage="charge"]{background:var(--st-charge)}
 .sg-bar[data-stage="eaf"]{background:var(--st-eaf)}
 .sg-bar[data-stage="zpf"]{background:var(--st-zpf)}
 .sg-bar[data-stage="lrf"]{background:var(--st-lrf); color:#fff}
@@ -679,11 +679,26 @@ main#view > *{animation:viewin .38s cubic-bezier(.2,.8,.25,1) both}
 .sg-legend i[data-sw="approval"],
 .sg-legend i[data-sw="route"],
 .sg-legend i[data-sw="validation"]{width:9px; border-radius:2px; transform:rotate(45deg)}
+/* Delay and shutdown are OVERLAYS: they mark a span of time ON TOP of the
+   stage bar. Both used to be near-opaque hatching, so a delay erased the bar
+   it covered and a shutdown erased the bar AND any delay beneath it — the
+   operator could see that something was lost but not what. Both hatches now
+   leave their gaps fully transparent, so every layer underneath reads
+   through, including where a delay and a shutdown overlap each other. The
+   glow shadows went with them: a 14-20px bloom smeared over the neighbours
+   and defeated the same purpose. */
 .sg-delay{position:absolute; top:2px; bottom:2px; border-radius:5px; z-index:4; cursor:help;
-  background:repeating-linear-gradient(135deg, rgba(229,72,77,.75) 0 7px, rgba(229,72,77,.35) 7px 14px);
-  box-shadow:0 0 14px rgba(229,72,77,.5); border:1px solid rgba(229,72,77,.8)}
-.sg-delay.shutdown{background:repeating-linear-gradient(135deg, rgba(180,10,40,.92) 0 7px, rgba(60,0,10,.85) 7px 14px);
-  box-shadow:0 0 20px rgba(229,20,60,.75); animation:pulse 1.4s ease-in-out infinite}
+  background:repeating-linear-gradient(135deg,
+    rgba(229,72,77,.55) 0 6px, rgba(229,72,77,0) 6px 13px);
+  border:1px solid rgba(229,72,77,.85)}
+/* Yellow ochre — the plant's own colour for a shutdown. Reading it against a
+   red delay is what distinguishes the two where they overlap, so the hatch
+   angle is mirrored as well: crossing hatches stay legible in monochrome and
+   for anyone who cannot separate the two hues. */
+.sg-delay.shutdown{
+  background:repeating-linear-gradient(45deg,
+    rgba(204,119,34,.62) 0 6px, rgba(204,119,34,0) 6px 13px);
+  border-color:rgba(204,119,34,.95)}
 .sg-ev{position:absolute; top:50%; width:11px; height:11px; transform:translate(-50%,-50%) rotate(45deg);
   z-index:6; cursor:help; border:1.5px solid rgba(255,255,255,.65); border-radius:2.5px}
 .sg-ev.k-approval,.sg-ev.k-locked{background:var(--ok)}

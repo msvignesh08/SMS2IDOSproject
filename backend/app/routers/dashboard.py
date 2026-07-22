@@ -2,6 +2,7 @@
 five-second questions. Pre-aggregated server-side so the dashboard renders
 fast on plant hardware."""
 from __future__ import annotations
+import re
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
@@ -255,16 +256,26 @@ def shift_handover(user: M.User = Depends(get_current_user),
 # LTC-1 · LTC-2 · BC-2 · BC-3 (+ Quality Lab). Digital Time Machine windows:
 # any plant day, 1–31 day spans. Every module feeds it.
 
+# Every physical unit gets a lane, always drawn — on a machine board an EMPTY
+# LANE IS A FACT: that unit is idle and available.
+#
+# There are FOUR ladle transfer cars, two serving each LRF, and the plant calls
+# both of an LRF's cars "LTC-1" and "LTC-2". The number alone is therefore
+# ambiguous: identity is (LRF unit + car number), which is what the lane key
+# encodes and the label spells out.
 GANTT_MACHINES = [
-    ("HM-BAY", "Hot Metal Bay", ["eaf"]),   # charge window, from the EAF record
     ("EAF-1", "Electric Arc Furnace", ["eaf"]),
-    ("ZPF-1", "ZPF", ["zpf"]),
+    ("ZPF-1", "Zero Power Furnace", ["zpf"]),
     ("LRF-5", "Ladle Refining Furnace 5", ["lrf"]),
     ("LRF-6", "Ladle Refining Furnace 6", ["lrf"]),
-    ("VD-2", "Vacuum Degasser 2", ["vd"]),
-    ("VD-3", "Vacuum Degasser 3", ["vd"]),
-    ("LTC-1", "Ladle Transfer Car 1", []),
-    ("LTC-2", "Ladle Transfer Car 2", []),
+    ("VD-2.1", "VD Tank 2.1", ["vd"]),
+    ("VD-2.2", "VD Tank 2.2", ["vd"]),
+    ("VD-3.1", "VD Tank 3.1", ["vd"]),
+    ("VD-3.2", "VD Tank 3.2", ["vd"]),
+    ("LRF5-LTC-1", "LTC-1 (LRF-5)", []),
+    ("LRF5-LTC-2", "LTC-2 (LRF-5)", []),
+    ("LRF6-LTC-1", "LTC-1 (LRF-6)", []),
+    ("LRF6-LTC-2", "LTC-2 (LRF-6)", []),
     ("BC-2", "Billet Caster 2", ["caster"]),
     ("BC-3", "Billet Caster 3", ["caster"]),
     ("QLAB", "Quality Laboratory", ["quality"]),
@@ -277,18 +288,12 @@ SHUTDOWN_MIN = 60.0
 # only when those are absent (constitution: nothing without a timeline —
 # and the timeline is the plant's, not the keyboard's).
 STAGE_TIME_FIELDS = {
-    "eaf": ("charging_start", "tap_end"),
+    "eaf": ("power_on", "tap_end"),
     "zpf": ("zpf_start", "zpf_end"),
     "lrf": ("lrf_start", "lrf_end"),
     "vd": ("vd_start", "vd_end"),
     "caster": ("cast_start", "cast_end"),
 }
-
-
-# The hot metal bay's occupancy lives inside the EAF record now that charging
-# is an EAF operation. Machine mode still needs it as its own lane: the bay is
-# physically busy from ladle arrival until the charge goes in.
-CHARGE_TIME_FIELDS = ("hm_arrival", "hm_charging")
 
 
 def _proc_dt(v):
@@ -311,7 +316,13 @@ def _machine_for(stage: str, heat: M.Heat, data: dict | None = None) -> str | No
         rr = heat.route_refining if heat.route_refining in ("LRF-5", "LRF-6") else None
         return data.get("lrf_unit") or rr or "LRF-5"
     if stage == "vd":
-        return heat.route_vd or ("VD-2" if (heat.route or "").startswith("VD") else None)
+        # The tank the heat actually sat in: the operator's entry first, then
+        # the route (which IS the tank now), and finally the legacy degasser
+        # value on heats recorded before the tanks were split — mapped to that
+        # degasser's first tank so those heats still land on a real lane.
+        return (HM_canon_vd(data.get("vd_tank"))
+                or HM_canon_vd(heat.route_vd)
+                or HM_canon_vd(heat.route))
     if stage == "caster":
         if heat.route in ("BC-2", "BC-3"):
             return heat.route
@@ -319,6 +330,51 @@ def _machine_for(stage: str, heat: M.Heat, data: dict | None = None) -> str | No
     if stage == "quality":
         return "QLAB"
     return None
+
+
+def HM_canon_vd(v):
+    """Resolve any VD identifier onto one of the four tank lanes.
+
+    Accepts "VD-2.1" (current), "VD-2" (legacy, pre-split) and bare "2.1"/"2"
+    as the consumption sheets write them. A legacy degasser maps to its FIRST
+    tank: the heat definitely used one of that degasser's two, and .1 is the
+    only defensible choice — better a real lane than none.
+    """
+    s = str(v or "").strip().upper().replace(" ", "")
+    if not s:
+        return None
+    # Anchored, and any other letters disqualify it: a bare digit search would
+    # read the "2" out of "BC-2" and put a caster-routed heat on a VD lane.
+    m = re.fullmatch(r"(?:VD[-_]?)?([23])(?:[.\-]([12]))?", s)
+    if not m:
+        return None
+    return f"VD-{m.group(1)}.{m.group(2) or '1'}"
+
+
+def _ltc_lane(heat: M.Heat, data: dict | None = None,
+              lrf_unit: str | None = None) -> str | None:
+    """Which physical transfer car — (LRF unit + car number).
+
+    Both of an LRF's cars are called LTC-1 and LTC-2, so the number alone
+    cannot identify one; LRF-5's LTC-1 and LRF-6's LTC-1 are different cars.
+
+    `lrf_unit` comes from the heat's LRF RECORD, which is the only reliable
+    source: route_refining holds an LRF only when the route decision picked
+    one directly, and is "ZPF" for any heat that went through the ZPF first —
+    which would silently file every such heat against LRF-5's cars.
+    """
+    car = str((data or {}).get("ltc_no") or "").strip().upper().replace(" ", "")
+    if not car:
+        return None
+    n = re.search(r"([12])", car)
+    if not n:
+        return None
+    unit = str(lrf_unit or "").strip().upper()
+    if unit not in ("LRF-5", "LRF-6"):
+        unit = heat.route_refining if heat.route_refining in ("LRF-5", "LRF-6") else None
+    if not unit:
+        return None                      # unknown LRF — no honest lane to pick
+    return f"LRF{unit[-1]}-LTC-{n.group(1)}"
 
 
 def _collect_window(db, w0, w1, now_at, include_locked=True):
@@ -332,7 +388,11 @@ def _collect_window(db, w0, w1, now_at, include_locked=True):
     picked = []
     for h in heats:
         recs = db.query(M.StageRecord).filter_by(heat_id=h.id).all()
-        bars = []; charge_bars = []
+        # Which LRF this heat used — needed to tell LRF-5's transfer cars from
+        # LRF-6's, since both call their cars LTC-1 and LTC-2.
+        _lrf_unit = next((( r.data or {}).get("lrf_unit")
+                          for r in recs if r.stage == "lrf"), None)
+        bars = []
         for r in recs:
             if not r.started_at:
                 continue
@@ -366,21 +426,8 @@ def _collect_window(db, w0, w1, now_at, include_locked=True):
             if r.stage == "caster":
                 bar["billet_t"] = float(d.get("billet_weight") or 0)
                 bar["ltc"] = d.get("ltc_no")
+                bar["ltc_lane"] = _ltc_lane(h, d, _lrf_unit)
             bars.append(bar)
-            # Charge window → HM-BAY lane. Kept OUT of `bars` so heat, shift
-            # and production modes still see exactly one EAF bar per heat;
-            # only the machine board consumes it.
-            if r.stage == "eaf":
-                c0 = _proc_dt(d.get(CHARGE_TIME_FIELDS[0]))
-                c1 = _proc_dt(d.get(CHARGE_TIME_FIELDS[1]))
-                if c0 and c1 and c1 >= c0 and not (c1 < w0 or c0 > w1):
-                    charge_bars.append({**bar, "machine": "HM-BAY",
-                                        "kind": "charge",
-                                        "title": "Hot Metal Charge",
-                                        "start": max(c0, w0).isoformat(sep=" "),
-                                        "end": min(c1, w1).isoformat(sep=" "),
-                                        "live": False, "done": bar["done"],
-                                        "shift_at_start": plant_time.resolve(max(c0, w0)).shift})
         if not bars or (h.status == "locked" and not include_locked):
             continue
         bars.sort(key=lambda b: b["start"])
@@ -414,7 +461,7 @@ def _collect_window(db, w0, w1, now_at, include_locked=True):
                            "kind": e.kind, "stage": e.stage,
                            "machine": _machine_for(e.stage, h, rec_d) if e.stage else None,
                            "detail": (e.detail or "")[:140]})
-        picked.append({"heat": h, "bars": bars, "charge_bars": charge_bars,
+        picked.append({"heat": h, "bars": bars,
                        "delays": delays, "events": events})
     return picked
 
@@ -443,12 +490,12 @@ def smart_gantt(mode: str = "heat", span: str = "day", plant_day: str | None = N
     rows = []
     if mode == "machine":
         for code, label, _stages in GANTT_MACHINES:
-            bars = [b for p in picked
-                    for b in p["bars"] + p["charge_bars"] if b["machine"] == code]
+            bars = [b for p in picked for b in p["bars"] if b["machine"] == code]
             # LTC lanes: represented by casting windows of heats that used the car
-            if code.startswith("LTC"):
+            if "LTC" in code:
                 bars = [dict(b, title=f"{b['title']} transfer") for p in picked
-                        for b in p["bars"] if b["stage"] == "caster" and b.get("ltc") == code]
+                        for b in p["bars"]
+                        if b["stage"] == "caster" and b.get("ltc_lane") == code]
             delays = [d for p in picked for d in p["delays"] if d["machine"] == code]
             events = [e for p in picked for e in p["events"] if e["machine"] == code]
             # MACHINE MODE SHOWS THE WHOLE PLANT — every lane, always.
@@ -552,8 +599,7 @@ def machine_board(user: M.User = Depends(get_current_user),
 
     board = []
     for code, label, _stages in GANTT_MACHINES:
-        bars = [b for p in picked
-                for b in p["bars"] + p["charge_bars"] if b["machine"] == code]
+        bars = [b for p in picked for b in p["bars"] if b["machine"] == code]
         delays = [d for p in picked for d in p["delays"] if d["machine"] == code]
         open_delay = next((d for d in delays if d["open"]), None)
         live = next((b for b in bars if b["live"]), None)

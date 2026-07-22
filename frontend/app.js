@@ -1257,7 +1257,7 @@ function renderSmartGantt(g) {
     const bars = r.bars.map(b => {
       const l = pct(b.start), w = Math.max(pct(b.end) - l, 0.8);
       const label = g.mode === "heat" ? b.title : (b.title && g.mode === "production" ? b.title : b.heat_no);
-      return `<div class="sg-bar ${b.live ? "live" : ""}" data-stage="${b.kind || b.stage}"
+      return `<div class="sg-bar ${b.live ? "live" : ""}" data-stage="${b.stage}"
         style="left:${l}%;width:${w}%"
         data-tip="<b>${esc(b.heat_no)} — ${esc(b.title)}</b>${esc(b.grade)}${b.route ? " · " + b.route : ""}${b.machine ? " · " + b.machine : ""}<br>${b.start.slice(5, 16)} → ${b.live ? "running" : b.end.slice(11, 16)}${b.done ? " · submitted ✓" : b.live ? " · LIVE" : ""}${b.billet_t ? "<br>" + b.billet_t + " t billets" : ""}"
         onclick="location.hash='#/heat/${b.heat_no}/${b.stage}'">${esc(label)}</div>`;
@@ -1513,7 +1513,7 @@ async function viewHeatWorkspace(heatNo, stageArg) {
           </div>
         </div>
         ${canRoute ? `<div class="rg-opts">
-          <button class="rg-opt" data-rg="ZPF"><b>ZPF</b><span>De-phosphorisation first, then ladle refining</span></button>
+          <button class="rg-opt" data-rg="ZPF"><b>ZPF</b><span>Zero Power Furnace first, then ladle refining</span></button>
           <button class="rg-opt" data-rg="LRF-5"><b>LRF-5</b><span>Direct to LRF-5 · bypasses ZPF</span></button>
           <button class="rg-opt" data-rg="LRF-6"><b>LRF-6</b><span>Direct to LRF-6 · bypasses ZPF</span></button>
         </div>`
@@ -2083,7 +2083,7 @@ function routeTile(h, readonly) {
     <h3>➡ Process Route Decision — ${h.heat_no}</h3>
     <div class="sub">The route decision belongs to the Shift Engineer. LRF chemistry must be recorded first.
       ${h.route ? `Current route: <b>${h.route}</b>. Re-selection is audited on the timeline.` : "No route selected yet."}</div>
-    <div class="tiles">${["VD-2", "VD-3", "BC-2", "BC-3"].map(opt).join("")}</div>
+    <div class="tiles">${["VD-2.1", "VD-2.2", "VD-3.1", "VD-3.2", "BC-2", "BC-3"].map(opt).join("")}</div>
     ${!canRoute ? `<div class="finding warning" style="margin-top:12px"><b>note</b><div>Your role (${esc(S.user.role)}) cannot select the route — the Shift Engineer decides.</div></div>` : ""}
     <div class="modal-foot"><button class="btn" onclick="UI.closeModal()">Close</button></div>`, m => {
     if (readonly || !canRoute) return;
@@ -2432,7 +2432,7 @@ async function viewSearch(qInit) {
       <label class="fld"><span>Status</span><select id="se-status"><option value="">any</option>
         ${["eaf","zpf","lrf","vd","caster","quality","review","locked","aborted"].map(s=>`<option>${s}</option>`).join("")}</select></label>
       <label class="fld"><span>Shift</span><select id="se-shift"><option value="">any</option><option>A</option><option>B</option><option>C</option></select></label>
-      <label class="fld"><span>Route</span><select id="se-route"><option value="">any</option><option>VD-2</option><option>VD-3</option><option>BC-2</option><option>BC-3</option></select></label>
+      <label class="fld"><span>Route</span><select id="se-route"><option value="">any</option><option>VD-2.1</option><option>VD-2.2</option><option>VD-3.1</option><option>VD-3.2</option><option>BC-2</option><option>BC-3</option></select></label>
       <label class="fld"><span>Plant day</span><input type="date" id="se-day"></label>
       <button class="btn primary" id="se-go">Search</button>
     </div>
@@ -3766,7 +3766,7 @@ async function applyRefiningRoute(h, code) {
 function refiningRouteTile(h, readonly, preselect) {
   if (preselect && !readonly) return applyRefiningRoute(h, preselect);
   const OPTS = [
-    ["ZPF", "ZPF \u2014 Zero Phosphorus Furnace", "De-phosphorisation before ladle refining. The ZPF module unlocks for this heat."],
+    ["ZPF", "ZPF \u2014 Zero Power Furnace", "Refining in the Zero Power Furnace before the ladle furnace. The ZPF module unlocks for this heat."],
     ["LRF-5", "LRF-5 \u2014 Ladle Refining Furnace 5", "This heat goes directly to LRF-5. ZPF is not part of this heat and is never shown as required."],
     ["LRF-6", "LRF-6 \u2014 Ladle Refining Furnace 6", "This heat goes directly to LRF-6. ZPF is not part of this heat and is never shown as required."],
   ];

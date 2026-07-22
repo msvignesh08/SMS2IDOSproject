@@ -17,7 +17,8 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from .. import models as M
 from ..core import plant_time
-from .stage_config import STAGE_DEFS, required_stages, REFINING_ROUTES
+from .stage_config import (STAGE_DEFS, required_stages, REFINING_ROUTES,
+                           ALL_ROUTES, is_vd_route)
 from .validation import validate_stage
 
 APPROVAL_CHAIN = [   # configurable via Administration (10.6); default per 5.13
@@ -136,7 +137,7 @@ def stage_gates(db: Session, heat: M.Heat) -> dict:
                 gates[st] = {"state": "not_in_route",
                              "reason": f"Route {heat.route_refining} takes this heat directly to the Ladle Refining Furnace — ZPF is not part of this heat."}
             continue
-        if st == "vd" and heat.route not in ("VD-2", "VD-3"):
+        if st == "vd" and not is_vd_route(heat.route):
             if heat.route is None:
                 gates[st] = {"state": "awaiting_route", "reason": "Available only if selected in the LRF Route Decision."}
             else:
@@ -219,8 +220,8 @@ def select_refining_route(db: Session, heat: M.Heat, user: M.User, choice: str):
 
 
 def select_route(db: Session, heat: M.Heat, user: M.User, route: str):
-    if route not in ("VD-2", "VD-3", "BC-2", "BC-3"):
-        raise ValueError("Route must be one of VD-2, VD-3, BC-2, BC-3.")
+    if route not in ALL_ROUTES:
+        raise ValueError(f"Route must be one of {', '.join(ALL_ROUTES)}.")
     lrf = db.query(M.StageRecord).filter_by(heat_id=heat.id, stage="lrf").first()
     chem = db.query(M.ChemistrySample).filter_by(heat_id=heat.id, stage="lrf",
                                                  superseded=False).count()
