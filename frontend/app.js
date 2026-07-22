@@ -1713,8 +1713,17 @@ function fieldInput(f, val) {
         <option value="Yes" ${v === "Yes" ? "selected" : ""}>Yes</option>
         <option value="No" ${v === "No" ? "selected" : ""}>No</option></select></label>`;
   const type = f.type === "time" ? "datetime-local" : f.type === "number" ? "number" : "text";
-  return `<label class="fld ${f.auto ? "auto" : ""}"><span>${esc(f.label)}${req}${unit}${f.auto ? ` <span class="unit">auto</span>` : ""}</span>
-    <input type="${type}" step="${f.step || "any"}" data-k="${f.key}" value="${esc(v)}" ${f.auto ? "readonly" : ""}></label>`;
+  // The unit belongs BESIDE THE INPUT, not inside the label. In the label it
+  // padded the label text, so a column of fields with units of different
+  // lengths ("t", "kWh", "Nm³") rendered inputs of visibly different widths —
+  // the ragged edge down the dialog. Out here every input is the same width
+  // and the unit sits where the number is actually read.
+  return `<label class="fld ${f.auto ? "auto" : ""}">
+    <span>${esc(f.label)}${req}${f.auto ? ` <span class="unit">auto</span>` : ""}</span>
+    <span class="in-row">
+      <input type="${type}" step="${f.step || "any"}" data-k="${f.key}" value="${esc(v)}" ${f.auto ? "readonly" : ""}>
+      <span class="unit suffix">${f.unit ? esc(f.unit) : ""}</span>
+    </span></label>`;
 }
 
 /* The additions half of a combined tile: the rows already recorded, plus one

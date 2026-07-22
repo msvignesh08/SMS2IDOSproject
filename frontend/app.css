@@ -310,6 +310,22 @@ h2.pg small{color:var(--tx2); font-weight:400; font-size:13px; margin-left:10px}
   background:var(--surface-solid); border:1px solid var(--line); border-radius:9px;
 }
 .fld input:focus,.fld select:focus,.fld textarea:focus{outline:2px solid var(--accent); outline-offset:1px; border-color:transparent}
+/* The input and its unit on one line. `.fld span` above makes every span a
+   block label, so this wrapper and the suffix must opt out explicitly or the
+   unit drops onto its own row wearing the label's uppercase styling. */
+.fld .in-row{
+  display:flex; align-items:center; gap:6px;
+  margin-bottom:0; text-transform:none; letter-spacing:normal; font-size:inherit;
+}
+.fld .in-row input{flex:1; min-width:0}
+/* Always present, even when a field has no unit: a fixed gutter is what makes
+   every input in a column the SAME width. Sized only when it has content, the
+   unitless fields stretched wider than their neighbours — the ragged right
+   edge this was meant to fix. */
+.fld .unit.suffix{
+  margin:0; flex:0 0 2.6em; text-align:left;
+  text-transform:none; letter-spacing:normal; white-space:nowrap;
+}
 .fld .unit{color:var(--tx2); font-size:11px; margin-left:6px; text-transform:none; letter-spacing:0}
 .fld input[type=number]{font-family:var(--mono); font-variant-numeric:tabular-nums}
 .fld.auto input{border-style:dashed; color:var(--accent); font-weight:700}
@@ -360,11 +376,27 @@ table.t td.mono, .mono{font-family:var(--mono)}
 .tile:hover{transform:translateY(-2px); border-color:var(--accent)}
 .tile .ti{font-size:24px}
 .tile b{display:block; margin-top:8px; font-size:14.5px}
-.tile .st{position:absolute; top:12px; right:12px; width:11px; height:11px; border-radius:50%}
-.tile .st.done{background:var(--ok); box-shadow:0 0 8px rgba(55,194,160,.6)}
-.tile .st.part{background:var(--warn)}
-.tile .st.todo{background:var(--line)}
-.tile .st.err{background:var(--err)}
+/* Tile state reads as a BAND along the bottom edge, not an 11px dot in the
+   corner. A dot carries its meaning in one small patch of colour, which is
+   the hardest thing to catch across a wall of tiles and the first thing lost
+   to a colour-vision difference. A full-width band is visible from across the
+   control room, and the gradient gives it a second cue — direction of fill —
+   so state is not carried by hue alone. */
+.tile .st{
+  position:absolute; left:0; right:0; bottom:0; top:auto;
+  height:4px; width:auto; border-radius:0 0 var(--radius) var(--radius);
+  background:var(--line-soft);
+}
+.tile .st.done{background:linear-gradient(90deg, var(--ok), color-mix(in srgb, var(--ok) 45%, transparent))}
+.tile .st.part{background:linear-gradient(90deg, var(--warn) 55%, var(--line-soft) 55%)}
+.tile .st.todo{background:var(--line-soft)}
+.tile .st.err{background:linear-gradient(90deg, var(--err), color-mix(in srgb, var(--err) 45%, transparent))}
+/* color-mix is widely supported, but a plant workstation may run an older
+   engine — fall back to a flat fill rather than losing the band entirely. */
+@supports not (background: color-mix(in srgb, red 50%, transparent)) {
+  .tile .st.done{background:var(--ok)}
+  .tile .st.err{background:var(--err)}
+}
 .tile small{color:var(--tx2); font-size:11.5px}
 
 /* stage tabs across heat workspace */
@@ -404,7 +436,7 @@ table.t td.mono, .mono{font-family:var(--mono)}
      stops them desyncing — at ≤720px the padding dropped to 16px while the
      footer margin stayed at -22px, overhanging the dialog by 6px a side. */
   --modal-pad:var(--sp-5);
-  width:min(880px,96vw);
+  width:min(1010px,96vw);   /* ~15% wider: three fields fit a row */
   max-height:min(92vh, 900px);
   display:flex; flex-direction:column; overflow:hidden;
   padding:var(--modal-pad);
@@ -442,7 +474,11 @@ table.t td.mono, .mono{font-family:var(--mono)}
   .modal-foot .btn{width:100%}
 }
 .x{background:none;border:none;color:var(--tx2);font-size:16px;cursor:pointer}
-.fgrid{display:grid; grid-template-columns:1fr 1fr; gap:0 18px}
+/* Three per row on a desk monitor — the entry sheets are wide and an operator
+   should not scroll a dialog to finish one section. Steps to 2 then 1 so the
+   same form still works on a tablet at the pulpit and a phone on the floor. */
+.fgrid{display:grid; grid-template-columns:repeat(3,1fr); gap:0 18px}
+@media(max-width:900px){.fgrid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:640px){.fgrid{grid-template-columns:1fr}}
 
 /* chemistry grid */
@@ -793,9 +829,8 @@ body[data-view="ai"] .btn.primary{background:var(--grad-ai);color:#fff;box-shado
 @media (max-width:980px){
   .grid.cols-4{grid-template-columns:repeat(2,1fr)}
   .grid.cols-3{grid-template-columns:repeat(2,1fr)}
-  .fgrid{grid-template-columns:repeat(2,1fr)}
   .card.glass{overflow-x:auto}
-  .modal{width:min(94vw,860px)}
+  .modal{width:min(94vw,990px)}
 }
 
 /* ── phones ≤ 720px: rail becomes a bottom command bar ── */
@@ -916,8 +951,12 @@ body[data-theme="lowpower"] .kpi.glass:hover{transform:none; box-shadow:0 6px 22
 .btn.primary:disabled::after{display:none}
 .fld.miss input,.fld.miss select,.fld.miss textarea{
   border-color:var(--warn)!important; box-shadow:0 0 0 1px rgba(245,197,66,.3)}
-.fld.miss > span{color:var(--warn)}
-.fld.miss > span::after{content:" — required"; text-transform:none; letter-spacing:0; font-weight:600}
+/* :not(.in-row) on both — the input-row wrapper is also a direct child span,
+   so without it the "— required" hint was injected INSIDE the row next to the
+   input, stealing ~80px and making every mandatory field's box visibly
+   narrower than its neighbours. The hint belongs on the label. */
+.fld.miss > span:not(.in-row){color:var(--warn)}
+.fld.miss > span:not(.in-row)::after{content:" — required"; text-transform:none; letter-spacing:0; font-weight:600}
 .guide{padding:15px 19px; border-left:3px solid var(--warn)}
 .guide > b{font-size:12px; letter-spacing:1.6px; text-transform:uppercase; color:var(--warn)}
 .guide ul{margin:9px 0 0; padding-left:19px}
@@ -1081,7 +1120,10 @@ table.t td.mono,.mono{font-variant-numeric:tabular-nums; letter-spacing:.01em}
 
 /* ── Forms: consistent label rhythm and a calm focus treatment ── */
 .fld{gap:var(--sp-1)}
-.fld > span{font-size:var(--fs-micro); letter-spacing:var(--ls-label); font-weight:650}
+/* :not(.in-row) — this rule styles the LABEL. The input-row wrapper is also a
+   direct child span, and without the exclusion it inherits the label's micro
+   size and tracking, shrinking the unit beside every input. */
+.fld > span:not(.in-row){font-size:var(--fs-micro); letter-spacing:var(--ls-label); font-weight:650}
 .fld input,.fld select,.fld textarea{
   padding:var(--sp-2) var(--sp-3); border-radius:var(--radius-s);
   font-size:var(--fs-base);
