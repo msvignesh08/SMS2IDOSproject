@@ -68,7 +68,10 @@ def login(body: LoginIn, db: DBSession = Depends(get_db)):
                      "department": u.department, "theme": u.theme,
                      "permissions": u.role.permissions},
             "plant": {"plant_day": m.plant_day.isoformat(), "shift": m.shift,
-                      "now": m.at.isoformat(sep=" ")}}
+                      "now": m.at.isoformat(sep=" ")},
+            # Shown from the first screen, so someone signing in during a
+            # maintenance window learns it before they start entering a heat.
+            "maintenance": maintenance_state(db)}
 
 
 @router.post("/logout")
@@ -128,8 +131,21 @@ def set_theme(body: ThemeIn, user: M.User = Depends(get_current_user),
     return {"ok": True}
 
 
+def maintenance_state(db: DBSession) -> dict:
+    """Is the plant in maintenance, and what should users be told?
+
+    Read here rather than in a middleware because maintenance in SMS-2 WARNS,
+    it does not lock: an operator mid-heat must always be able to finish
+    recording it, or the shift loses data the paper log would have kept.
+    """
+    rows = {s.key: (s.value or "") for s in db.query(M.SystemSetting)
+            if s.key in ("maintenance_mode", "maintenance_message")}
+    on = rows.get("maintenance_mode", "off").strip().lower() in ("on", "1", "true", "yes")
+    return {"on": on, "message": rows.get("maintenance_message", "").strip()}
+
+
 @router.get("/me")
-def me(user: M.User = Depends(get_current_user)):
+def me(user: M.User = Depends(get_current_user), db: DBSession = Depends(get_db)):
     m = plant_time.now_moment()
     return {"user": {"id": user.id, "employee_id": user.employee_id,
                      "name": user.name, "role": user.role.name,
@@ -139,7 +155,8 @@ def me(user: M.User = Depends(get_current_user)):
             "plant": {"plant_day": m.plant_day.isoformat(), "shift": m.shift,
                       "shift_start": m.shift_start.isoformat(sep=" "),
                       "shift_end": m.shift_end.isoformat(sep=" "),
-                      "now": m.at.isoformat(sep=" ")}}
+                      "now": m.at.isoformat(sep=" ")},
+            "maintenance": maintenance_state(db)}
 
 
 # ═══ NOTIFICATION PREFERENCE ENGINE ═══

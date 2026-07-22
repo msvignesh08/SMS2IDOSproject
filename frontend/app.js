@@ -213,7 +213,7 @@ async function boot() {
   if (S.token) {
     try {
       const me = await GET("/api/auth/me");
-      S.user = me.user; S.plant = me.plant;
+      S.user = me.user; S.plant = me.plant; S.maintenance = me.maintenance;
       enterApp();
       return;
     } catch { S.token = null; localStorage.removeItem("sms2_token"); }
@@ -326,7 +326,7 @@ async function doLogin() {
   $("#login-btn").disabled = true;
   try {
     const r = await POST("/api/auth/login", {employee_id: emp, password: pw});
-    S.token = r.token; S.user = r.user; S.plant = r.plant;
+    S.token = r.token; S.user = r.user; S.plant = r.plant; S.maintenance = r.maintenance;
     localStorage.setItem("sms2_token", r.token);
     enterApp();
   } catch (e) { $("#login-err").textContent = e.message; }
@@ -356,12 +356,31 @@ function enterApp() {
   $("#sb-name").textContent = S.user.name;
   $("#sb-role").textContent = `${S.user.role} · ${S.user.employee_id}`;
   $("#nav-admin").style.display = isAdmin() ? "" : "none";
+  applyMaintenance();
   startClock(); pollNotifications(); PULSE.start();
   if (S.user.notification_prefs === null || S.user.notification_prefs === undefined)
     setTimeout(() => showNotifPrefs(true), 700);
   S.pollTimer = setInterval(pollNotifications, 60000);   // slow safety net; the 2s pulse leads
   if (!location.hash || location.hash === "#/") location.hash = "#/dashboard";
   route();
+}
+
+/* Maintenance mode. The setting existed, the Settings screen promised it
+   showed a banner, and nothing read it — turning it on did nothing at all.
+   It WARNS and never locks: an operator mid-heat must still be able to finish
+   recording it, or the shift loses data the paper log would have kept. */
+function applyMaintenance(st) {
+  if (st) S.maintenance = st;
+  const el = $("#maintenance-banner");
+  if (!el) return;
+  const m = S.maintenance;
+  if (m && m.on) {
+    el.textContent = "🛠 MAINTENANCE MODE — " +
+      (m.message || "System maintenance is in progress. Production entry remains available.");
+    el.classList.remove("hidden");
+  } else {
+    el.classList.add("hidden");
+  }
 }
 
 function startClock() {
@@ -374,6 +393,7 @@ function startClock() {
       try {
         const me = await GET("/api/auth/me");
         S.plant = me.plant;
+        applyMaintenance(me.maintenance);   // an admin may switch it mid-shift
       } catch {}
     }
     if (S.plant) { $("#sb-day").textContent = S.plant.plant_day; $("#sb-shift").textContent = S.plant.shift; }
@@ -3140,7 +3160,7 @@ async function adminSettings(body) {
           <td><input data-set="${esc(k)}" value="${esc(v)}" class="num-input" ${k==="plant_day_start"?'title="Constitutional — informational; the Plant Date Engine is the source of truth"':""}></td>
           <td><button class="btn small" data-save="${esc(k)}">Save</button></td></tr>`).join("")}
       </tbody></table>
-      <div class="small muted" style="margin-top:8px">Note: <code>plant_day_start</code> is constitutionally frozen at 22:00 — the setting is displayed for documentation; the Plant Date Engine is the single source of truth. <code>maintenance_mode: on</code> shows a banner to users (production entry remains available to avoid data loss).</div>
+      <div class="small muted" style="margin-top:8px">Note: <code>plant_day_start</code> is constitutionally frozen at 22:00 — the setting is displayed for documentation; the Plant Date Engine is the single source of truth. Set <code>maintenance_mode</code> to <code>on</code> (or <code>off</code>) to show every signed-in user a banner carrying <code>maintenance_message</code>. It warns only — production entry stays fully available, so nobody loses a heat they are part-way through recording. Users see it within a minute, without reloading.</div>
     </div>`;
   body.addEventListener("click", async e => {
     const k = e.target.dataset?.save;
@@ -3150,6 +3170,10 @@ async function adminSettings(body) {
     try {
       await POST("/api/admin/settings", {key: k, value: $(`[data-set="${k}"]`).value, reauth_password: pw});
       toast("Setting saved", "ok");
+      // Reflect a maintenance change on the admin's own screen at once rather
+      // than up to a minute later — otherwise switching it on looks broken.
+      if (k.startsWith("maintenance_"))
+        GET("/api/auth/me").then(me => applyMaintenance(me.maintenance)).catch(() => {});
     } catch (er) { toast(er.message, "err", 5000); }
   });
 }

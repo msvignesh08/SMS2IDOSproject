@@ -268,6 +268,14 @@ main#view{padding:18px 22px 60px; max-width:1500px; width:100%; margin:0 auto}
 .bell i{position:absolute; top:-6px; right:-9px; background:#D42027; color:#fff;
   font-style:normal; font-size:10px; font-weight:700; border-radius:9px; padding:1px 5px}
 
+/* Maintenance reads as a system notice, not a production warning — the amber
+   hatch is the plant's language for "this heat is different", and reusing it
+   here would have an operator hunting for what is wrong with their heat. */
+.training-banner.maint{
+  background:var(--info-soft);
+  border-color:var(--info);
+  color:var(--tx);
+}
 .training-banner{margin:10px 18px 0; padding:8px 16px; border-radius:10px;
   background:repeating-linear-gradient(45deg,rgba(245,197,66,.18),rgba(245,197,66,.18) 12px,rgba(245,197,66,.05) 12px,rgba(245,197,66,.05) 24px);
   border:1px solid rgba(245,197,66,.5); color:var(--tx); font-size:13px; font-weight:600}

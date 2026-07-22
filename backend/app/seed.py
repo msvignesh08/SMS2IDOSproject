@@ -233,7 +233,9 @@ def seed(db: Session):
         "plant_name": "Steel Melting Shop — SMS-2",
         "plant_day_start": "22:00",
         "approval_chain": "Operator,Shift Engineer,Shift Incharge",
-        "maintenance_mode": "off",
+        "maintenance_mode": "off",          # on|off — warns, never locks entry
+        "maintenance_message": "Scheduled system maintenance is in progress. "
+                               "Production entry stays available — keep recording as normal.",
         "training_banner": "TRAINING MODE — records are excluded from production reports and organizational knowledge.",
     }
     for k, v in defaults.items():

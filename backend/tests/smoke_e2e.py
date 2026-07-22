@@ -755,3 +755,34 @@ print(f"EAF ENTRY UNCHANGED OK — {he['heat_no']} still starts at the EAF on th
 print("\n========================================")
 print("DUAL FURNACE LAW: ALL PASSED")
 print("========================================")
+
+# ══════════════════════════════════════════════════════════════════════════
+print("\n--- Maintenance mode ---")
+# The setting shipped seeded but read by nothing: switching it on changed
+# nothing on screen, and no test noticed. Assert the state actually reaches
+# every signed-in client, and that it warns without locking anyone out.
+assert call("GET", "/api/auth/me", token=t_se)["maintenance"]["on"] is False
+
+call("POST", "/api/admin/settings",
+     {"key": "maintenance_mode", "value": "on", "reauth_password": "admin@123"}, token=adm2)
+call("POST", "/api/admin/settings",
+     {"key": "maintenance_message", "value": "UPS changeover 02:00-04:00.",
+      "reauth_password": "admin@123"}, token=adm2)
+
+# reaches a plant user, not only the administrator who set it
+mm = call("GET", "/api/auth/me", token=t_se)["maintenance"]
+assert mm["on"] is True and mm["message"] == "UPS changeover 02:00-04:00.", mm
+# and it is on the login response, so it is known before a heat is started
+assert login("SE001", "steel@123")["maintenance"]["on"] is True
+
+# THE MAINTENANCE LAW: it WARNS, it never locks. An operator mid-heat must
+# still be able to finish recording it, or the shift loses data the paper
+# log would have kept.
+hmt = call("POST", "/api/heats", {"grade_code": "Fe500D"}, token=t_se)
+call("PUT", f"/api/heats/{hmt['heat_no']}/stages/eaf",
+     {"data": {"tap_temp": 1655}}, token=t_se)
+
+call("POST", "/api/admin/settings",
+     {"key": "maintenance_mode", "value": "off", "reauth_password": "admin@123"}, token=adm2)
+assert call("GET", "/api/auth/me", token=t_se)["maintenance"]["on"] is False
+print("MAINTENANCE MODE OK — reaches every client, warns without locking entry")
