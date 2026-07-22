@@ -325,30 +325,30 @@ assert g7["days"] == 7
 # heat's data is dated 2026-07-16), not on the day the keyboard was used.
 gm = call("GET", "/api/gantt?mode=machine&span=day&plant_day=2026-07-16", token=t_se)
 lanes = [r["key"] for r in gm["rows"]]
-# The whole plant is on the board: both furnaces, both LRFs, all FOUR VD tanks
-# and all FOUR transfer cars. The cars are keyed by the LRF that owns them —
-# each LRF calls its two cars LTC-1 and LTC-2, so the number alone is ambiguous.
+# The whole plant is on the board, in process order: EAF, ZPF, the LRF section
+# (four lanes -- each LRF's two transfer cars), the four VD tanks, then the
+# casters. The cars are keyed by the LRF that owns them: each LRF calls its two
+# cars LTC-1 and LTC-2, so the number alone is ambiguous.
 assert "HM-BAY" not in gm["machines"], "the hot metal bay is no longer a lane"
-for _m in ["EAF-1", "ZPF-1", "LRF-5", "LRF-6",
-           "VD-2.1", "VD-2.2", "VD-3.1", "VD-3.2",
-           "LRF5-LTC-1", "LRF5-LTC-2", "LRF6-LTC-1", "LRF6-LTC-2",
-           "BC-2", "BC-3", "QLAB"]:
-    assert _m in gm["machines"], f"{_m} lane missing: {gm['machines']}"
-lrf6 = next((r for r in gm["rows"] if r["key"] == "LRF-6"), None)
-assert lrf6 and lrf6["bars"], "LRF bar must land in the LRF-6 lane per lrf_unit field"
-assert lrf6["bars"][0]["start"].startswith("2026-07-16 09:15"), \
-    f"LRF bar must carry the operator-entered process time: {lrf6['bars'][0]}"
-# This heat ran on LRF-6 with car LTC-1, so it belongs to LRF-6's car — NOT to
-# LRF-5's identically-numbered one.
-ltc1 = next((r for r in gm["rows"] if r["key"] == "LRF6-LTC-1"), None)
-assert ltc1 and ltc1["bars"], "caster transfer must appear on LRF-6's LTC-1 lane"
+assert "LRF-5" not in gm["machines"] and "LRF-6" not in gm["machines"],     "the plain LRF lanes are replaced by their transfer-car lanes"
+_order = ["EAF", "ZPF",
+          "LRF5-LTC-1", "LRF5-LTC-2", "LRF6-LTC-1", "LRF6-LTC-2",
+          "VD-2.1", "VD-2.2", "VD-3.1", "VD-3.2",
+          "BC-2", "BC-3", "QLAB"]
+assert gm["machines"] == _order, f"lane order is EAF, ZPF, LRF, VD, BC: {gm['machines']}"
+
+# Refining draws in the car lane. This heat ran on LRF-6, so it belongs to an
+# LRF-6 car and never to LRF-5's identically-numbered one.
+lrf6 = next((r for r in gm["rows"] if r["key"] == "LRF6-LTC-1"), None)
+assert lrf6 and lrf6["bars"], "LRF bar must land in an LRF-6 car lane per lrf_unit"
+assert lrf6["bars"][0]["start"].startswith("2026-07-16 09:15"),     f"LRF bar must carry the operator-entered process time: {lrf6['bars'][0]}"
 other = next((r for r in gm["rows"] if r["key"] == "LRF5-LTC-1"), None)
 assert other is not None and not other["bars"],     "LRF-5's LTC-1 is a different car and must stay empty"
-print("GANTT LANES OK — 4 VD tanks + 4 LRF-scoped transfer cars; the heat lands on LRF-6's LTC-1, not LRF-5's")
+print("GANTT LANES OK — EAF, ZPF, 4 LRF car lanes, 4 VD tanks, 2 casters, in process order")
 
 # Machine intelligence board
 mb = call("GET", "/api/machines", token=t_se)
-eaf_m = next(x for x in mb["machines"] if x["code"] == "EAF-1")
+eaf_m = next(x for x in mb["machines"] if x["code"] == "EAF")
 assert "state" in eaf_m and "utilization_pct" in eaf_m
 print("MACHINE BOARD OK —", ", ".join(f"{x['code']}:{x['state']}" for x in mb["machines"][:6]))
 

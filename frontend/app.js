@@ -2979,7 +2979,8 @@ async function adminMasters(body) {
              ${["SMS2_GRAPH_TENANT","SMS2_GRAPH_CLIENT_ID","SMS2_GRAPH_CLIENT_SECRET","SMS2_GRAPH_FILE"]
                .map(k => `<li>${k}${st.missing.includes(k) ? ` <span class="tag error">missing</span>` : ` <span class="tag done">set</span>`}</li>`).join("")}
            </ul>
-           <div class="small muted" style="margin-top:8px">Needs an Azure AD app registration with admin consent for <b>Files.Read.All</b> (or Sites.Read.All), and outbound access to Microsoft from this server.</div>`;
+           <div class="small muted" style="margin-top:8px"><b>SMS2_GRAPH_FILE</b> takes the sharing link straight from the workbook’s <b>Copy link</b> button — no site ID to look up. A drive-item path works too.</div>
+           <div class="small muted" style="margin-top:6px">Needs an Azure AD app registration with admin consent for <b>Files.Read.All</b> (or Sites.Read.All), and outbound access to Microsoft from this server. A sharing link addresses the file, it does not authorise it — the consent is required either way.</div>`;
       const run = async dry => {
         const btn = $(dry ? "#xl-dry" : "#xl-sync"); if (!btn) return;
         const was = btn.textContent; btn.disabled = true; btn.textContent = "Working…";

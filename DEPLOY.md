@@ -150,8 +150,22 @@ server — never in the repository:
 SMS2_GRAPH_TENANT         directory (tenant) ID
 SMS2_GRAPH_CLIENT_ID      application (client) ID
 SMS2_GRAPH_CLIENT_SECRET  client secret
-SMS2_GRAPH_FILE           e.g. drives/{drive-id}/root:/Plant/IDOS.xlsx:
+SMS2_GRAPH_FILE           the sharing link, or a drive-item path
 ```
+
+**Getting `SMS2_GRAPH_FILE`** — open the workbook in SharePoint or OneDrive,
+press **Share → Copy link**, and paste the whole URL. That is all. Set the
+link's audience to *People in your organisation* rather than *Anyone*: the app
+signs in as itself and is authorised by the admin consent above, so an
+anonymous link buys nothing and leaves the plant's production data reachable by
+whoever holds the URL.
+
+A drive-item path still works if you prefer one
+(`drives/{drive-id}/root:/Plant/IDOS.xlsx:` — note the trailing colon).
+
+The link only **addresses** the file. App-only tokens carry no user identity, so
+"anyone with the link" does not apply to them and `Files.Read.All` consent is
+required either way.
 
 The panel shows which variables are set, the file it points at, and the last
 sync result. **Check connection** fetches and parses without writing;

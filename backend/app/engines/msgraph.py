@@ -19,17 +19,25 @@ CONFIGURED BY ENVIRONMENT, NEVER BY THE DATABASE OR THE REPOSITORY:
     SMS2_GRAPH_TENANT         directory (tenant) ID
     SMS2_GRAPH_CLIENT_ID      application (client) ID
     SMS2_GRAPH_CLIENT_SECRET  client secret          <- never logged or shown
-    SMS2_GRAPH_FILE           drive item to read, either
+    SMS2_GRAPH_FILE           the workbook to read. EITHER a sharing link
+                              pasted straight from SharePoint/OneDrive's
+                              "Copy link" --
+                                https://contoso.sharepoint.com/:x:/s/.../Ed5...
+                              -- or a drive-item path:
                                 drives/{drive-id}/items/{item-id}
                                 drives/{drive-id}/root:/Path/To/IDOS.xlsx:
                                 sites/{site-id}/drive/root:/IDOS.xlsx:
                                 users/{user-id}/drive/root:/IDOS.xlsx:
+                              The link is the easier of the two and is the one
+                              to prefer; it only ADDRESSES the file, so admin
+                              consent is still required either way.
 
 The secret is read at call time and never returned by any function here, so it
 cannot reach the API surface, the audit trail or the browser.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import tempfile
@@ -116,11 +124,33 @@ def get_token() -> str:
     return t
 
 
+def share_id(link: str) -> str:
+    """Encode a SharePoint/OneDrive sharing URL as a Graph share ID.
+
+    Graph's own scheme: base64 of the URL, url-safe alphabet, padding stripped,
+    prefixed "u!". Lets an administrator paste the link that "Copy link" gives
+    them instead of hunting a site ID and typing a path with a trailing colon —
+    which was the step most likely to be got wrong.
+    """
+    b64 = base64.b64encode(link.strip().encode()).decode()
+    return "u!" + b64.rstrip("=").replace("/", "_").replace("+", "-")
+
+
+def content_url() -> str:
+    """Graph URL for the workbook's bytes, from either addressing form."""
+    ref = _env("SMS2_GRAPH_FILE").strip()
+    if ref.lower().startswith(("http://", "https://")):
+        # A sharing link ADDRESSES the file; it does not authorise it. An
+        # app-only token has no user identity for "anyone with the link" to
+        # apply to, so Files.Read.All/Sites.Read.All is still required.
+        return f"{GRAPH}/shares/{share_id(ref)}/driveItem/content"
+    return f"{GRAPH}/{ref.strip('/')}/content"
+
+
 def download(token: str | None = None) -> tuple[str, int]:
     """Fetch the workbook to a temp file. Returns (path, bytes)."""
     token = token or get_token()
-    path = _env("SMS2_GRAPH_FILE").strip("/")
-    url = f"{GRAPH}/{path}/content" if not path.endswith(":") else f"{GRAPH}/{path}/content"
+    url = content_url()
     req = urllib.request.Request(url)
     req.add_header("Authorization", f"Bearer {token}")
     try:
@@ -130,8 +160,9 @@ def download(token: str | None = None) -> tuple[str, int]:
         body = e.read().decode(errors="replace")[:300]
         hint = ""
         if e.code == 404:
-            hint = (" The path in SMS2_GRAPH_FILE did not resolve — check it "
-                    "against the examples in msgraph.py.")
+            hint = (" SMS2_GRAPH_FILE did not resolve. If it is a sharing "
+                    "link, re-copy it from the file itself; if it is a path, "
+                    "check it against the examples in msgraph.py.")
         elif e.code in (401, 403):
             hint = (" The application is authenticated but not permitted to read "
                     "this file — Files.Read.All (or Sites.Read.All) needs admin "

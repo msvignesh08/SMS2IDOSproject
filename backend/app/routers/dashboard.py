@@ -264,18 +264,16 @@ def shift_handover(user: M.User = Depends(get_current_user),
 # ambiguous: identity is (LRF unit + car number), which is what the lane key
 # encodes and the label spells out.
 GANTT_MACHINES = [
-    ("EAF-1", "Electric Arc Furnace", ["eaf"]),
-    ("ZPF-1", "Zero Power Furnace", ["zpf"]),
-    ("LRF-5", "Ladle Refining Furnace 5", ["lrf"]),
-    ("LRF-6", "Ladle Refining Furnace 6", ["lrf"]),
+    ("EAF", "Electric Arc Furnace", ["eaf"]),
+    ("ZPF", "Zero Power Furnace", ["zpf"]),
+    ("LRF5-LTC-1", "LRF-5 · LTC-1", ["lrf"]),
+    ("LRF5-LTC-2", "LRF-5 · LTC-2", ["lrf"]),
+    ("LRF6-LTC-1", "LRF-6 · LTC-1", ["lrf"]),
+    ("LRF6-LTC-2", "LRF-6 · LTC-2", ["lrf"]),
     ("VD-2.1", "VD Tank 2.1", ["vd"]),
     ("VD-2.2", "VD Tank 2.2", ["vd"]),
     ("VD-3.1", "VD Tank 3.1", ["vd"]),
     ("VD-3.2", "VD Tank 3.2", ["vd"]),
-    ("LRF5-LTC-1", "LTC-1 (LRF-5)", []),
-    ("LRF5-LTC-2", "LTC-2 (LRF-5)", []),
-    ("LRF6-LTC-1", "LTC-1 (LRF-6)", []),
-    ("LRF6-LTC-2", "LTC-2 (LRF-6)", []),
     ("BC-2", "Billet Caster 2", ["caster"]),
     ("BC-3", "Billet Caster 3", ["caster"]),
     ("QLAB", "Quality Laboratory", ["quality"]),
@@ -306,15 +304,24 @@ def _proc_dt(v):
         return None
 
 
-def _machine_for(stage: str, heat: M.Heat, data: dict | None = None) -> str | None:
+def _machine_for(stage: str, heat: M.Heat, data: dict | None = None,
+                 ltc_no: str | None = None) -> str | None:
     data = data or {}
     if stage == "eaf":
-        return "EAF-1"
+        return "EAF"
     if stage == "zpf":
-        return "ZPF-1"
+        return "ZPF"
     if stage == "lrf":
+        # Refining draws on the transfer car that carried the ladle, so the
+        # LRF section of the board is four lanes, not two. `ltc_no` is a
+        # CASTER field, passed in by the caller — the LRF record cannot know
+        # it. Falls back to the LRF's first car: the workbook never recorded a
+        # car number, so keying strictly on it would erase every historical
+        # refining bar, and an empty board is a worse lie than an approximate
+        # lane. Same reasoning as HM_canon_vd's legacy tank mapping.
         rr = heat.route_refining if heat.route_refining in ("LRF-5", "LRF-6") else None
-        return data.get("lrf_unit") or rr or "LRF-5"
+        unit = data.get("lrf_unit") or rr or "LRF-5"
+        return _ltc_lane(heat, {"ltc_no": ltc_no or "LTC-1"}, unit)
     if stage == "vd":
         # The tank the heat actually sat in: the operator's entry first, then
         # the route (which IS the tank now), and finally the legacy degasser
@@ -392,6 +399,10 @@ def _collect_window(db, w0, w1, now_at, include_locked=True):
         # LRF-6's, since both call their cars LTC-1 and LTC-2.
         _lrf_unit = next((( r.data or {}).get("lrf_unit")
                           for r in recs if r.stage == "lrf"), None)
+        # The car number lives on the CASTER record, but the LRF bar needs it
+        # to choose its lane, so resolve it once per heat rather than per bar.
+        _ltc_no = next((( r.data or {}).get("ltc_no")
+                        for r in recs if r.stage == "caster"), None)
         bars = []
         for r in recs:
             if not r.started_at:
@@ -416,7 +427,7 @@ def _collect_window(db, w0, w1, now_at, include_locked=True):
                 continue
             bar = {"heat_no": h.heat_no, "stage": r.stage,
                    "title": STAGE_TITLES[r.stage],
-                   "machine": _machine_for(r.stage, h, d),
+                   "machine": _machine_for(r.stage, h, d, _ltc_no),
                    "start": max(b0, w0).isoformat(sep=" "),
                    "end": min(b1, w1).isoformat(sep=" "),
                    "done": r.status in ("submitted", "approved"),
@@ -491,11 +502,6 @@ def smart_gantt(mode: str = "heat", span: str = "day", plant_day: str | None = N
     if mode == "machine":
         for code, label, _stages in GANTT_MACHINES:
             bars = [b for p in picked for b in p["bars"] if b["machine"] == code]
-            # LTC lanes: represented by casting windows of heats that used the car
-            if "LTC" in code:
-                bars = [dict(b, title=f"{b['title']} transfer") for p in picked
-                        for b in p["bars"]
-                        if b["stage"] == "caster" and b.get("ltc_lane") == code]
             delays = [d for p in picked for d in p["delays"] if d["machine"] == code]
             events = [e for p in picked for e in p["events"] if e["machine"] == code]
             # MACHINE MODE SHOWS THE WHOLE PLANT — every lane, always.
