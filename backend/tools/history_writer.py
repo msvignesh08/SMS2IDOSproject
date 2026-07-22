@@ -38,8 +38,7 @@ from tools import history_map as HM
 # records power-on rather than a charging start, for instance. First match
 # wins, so a record spans real time instead of collapsing to a point.
 STAGE_SPAN = {
-    "eaf":    (("charging_start", "power_on", "hm_charging", "hm_arrival"),
-               ("tap_end", "tap_start")),
+    "eaf":    (("power_on", "hm_charging"), ("tap_end", "tap_start")),
     "zpf":    (("zpf_start", "blow_on_time", "hm_charging"),
                ("tap_time", "zpf_end")),
     "lrf":    (("lrf_start", "power_on", "eaf_tap_time"), ("lrf_end", "power_off")),
@@ -194,7 +193,7 @@ class HistoryWriter:
                     quantity=qty, unit=mat.unit, addition_point=point,
                     remarks="imported"))
                 mats_by_stage[stage].append({"quantity": qty, "category": mat.category,
-                                             "point": point})
+                                             "code": mat.code, "point": point})
                 self.stats["material additions"] += 1
 
             stages = {"lrf", "caster", "quality", "review", h["entry"]}

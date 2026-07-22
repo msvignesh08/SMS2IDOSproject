@@ -54,37 +54,36 @@ STAGE_DEFS = {
             # shop-floor sheet carries charge and EAF columns on ONE row, so
             # they now live in one stage. Chemistry below takes both samples —
             # record one labelled "Hot Metal" and one "EAF Bath".
-            {"key": "general", "label": "General Information", "icon": "🟦", "fields": [
-                F("blast_furnace", "Blast Furnace", "select", req=True, options=["BF-1", "BF-2"]),
-                F("ladle_no", "Ladle Number", "select", req=True,
-                  options=[str(i) for i in range(1, 16)]),
+            {"key": "general", "label": "Furnace Information", "icon": "🟦", "fields": [
+                F("bottom_life", "Bottom Life", step="1", unit="heats"),
+                F("ebt_life", "EBT Life", step="1", unit="heats"),
                 F("furnace_campaign", "F/C — Furnace Campaign"),
                 F("lead_seq", "Lead Sequence"),
             ]},
-            {"key": "charge_mix", "label": "Charge Mix", "icon": "⚖", "fields": [
+            # ── HOT METAL & SCRAP, one section ────────────────────────────
+            # The charge is ONE decision: what went into the furnace. It was
+            # split across three tiles (mix / scrap materials / summary), so
+            # the operator had to open three dialogs to record one charge and
+            # could not see the running total while typing. Now the scrap rows
+            # come first — that is the order the charge is actually made up —
+            # then the hot metal, then the totals the two produce.
+            {"key": "charge_mix", "label": "Hot Metal & Scrap Details", "icon": "⚖",
+             "materials": {"category": "scrap", "point": "charge",
+                           "label": "Scrap & Charge Additions"},
+             "fields": [
                 F("hm_weight", "Hot Metal Weight", req=True, unit="t"),
                 F("hm_temp", "Hot Metal Temperature", req=True, unit="°C"),
-                F("hm_arrival", "Hot Metal Arrival", "time"),
                 F("hm_charging", "Hot Metal Charging", "time", req=True),
-                F("dri_feed", "DRI Feed", unit="t"),
+                F("hmc_route", "HMC Charge Route", "select",
+                  options=["Launder", "Top pouring"]),
                 F("hot_heel", "Hot Heel", unit="t"),
                 F("hm_remarks", "Charge Remarks", "textarea"),
-            ]},
-            {"key": "scrap", "label": "Scrap & Charge Materials", "icon": "🧲",
-             "materials": {"category": "scrap", "point": "charge",
-                           "label": "Charge Mix Additions"}},
-            {"key": "charge_summary", "label": "Charge Summary", "icon": "📊", "fields": [
+                # Totals live with the charge that produces them.
                 F("total_scrap", "Total Scrap Weight", auto=True, unit="t"),
                 F("total_charge", "Total Charge Weight", auto=True, unit="t"),
                 F("hm_pct", "Hot Metal %", auto=True, unit="%"),
                 F("dri_pct", "DRI %", auto=True, unit="%"),
-                F("yield_pct", "Yield %", unit="%"),
-            ]},
-            {"key": "charging", "label": "Charging Information", "icon": "🟦", "fields": [
-                F("charging_start", "Charging Start Time", "time", req=True),
-                F("charging_end", "Charging End Time", "time", req=True),
-                F("charging_remarks", "Charging Remarks", "textarea"),
-            ]},
+             ]},
             {"key": "power", "label": "Power & Energy", "icon": "⚡", "fields": [
                 F("power_on", "Power ON Time", "time", req=True),
                 F("power_off", "Power OFF Time", "time", req=True),

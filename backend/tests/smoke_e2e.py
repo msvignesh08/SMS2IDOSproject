@@ -58,8 +58,8 @@ print("VALIDATION BLOCKS EMPTY SUBMIT OK —", len(r["findings"]), "findings")
 # ── charge mix — the hot metal and scrap charged INTO the furnace, recorded
 #    on the EAF stage alongside the furnace operation itself.
 call("PUT", f"/api/heats/{HN}/stages/eaf", {"data": {
-    "blast_furnace": "BF-1", "ladle_no": "7", "hm_weight": 92.5, "hm_temp": 1350,
-    "hm_arrival": "2026-07-16T06:20", "hm_charging": "2026-07-16T06:45",
+    "bottom_life": 812, "ebt_life": 47, "hm_weight": 92.5, "hm_temp": 1350,
+    "hm_charging": "2026-07-16T06:45", "hmc_route": "Launder",
     "stage_remarks": "Normal ladle condition."}}, token=t_op)
 call("POST", f"/api/heats/{HN}/stages/eaf/chemistry",
      {"label": "Hot Metal", "values": {"C": 4.2, "Si": 0.65, "Mn": 0.4, "S": 0.045, "P": 0.11, "Ti": 0.05}}, token=t_op)
@@ -75,16 +75,15 @@ print("CHARGE MIX AUTO-CALC OK — total charge", st["data"]["total_charge"],
 
 # ── EAF furnace operation (with chronology test: tap before charging end)
 call("PUT", f"/api/heats/{HN}/stages/eaf", {"data": {
-    "charging_start": "2026-07-16T06:50", "charging_end": "2026-07-16T07:30",
     "power_on": "2026-07-16T06:55", "power_off": "2026-07-16T08:10",
     "energy_kwh": 38500, "o2_consumption": 2900, "bath_temp": 1640,
-    "tap_start": "2026-07-16T07:10", "tap_end": "2026-07-16T08:25",
+    "tap_start": "2026-07-16T06:10", "tap_end": "2026-07-16T08:25",
     "tap_temp": 1655, "tap_weight": 104.0}}, token=t_op)
 call("POST", f"/api/heats/{HN}/stages/eaf/chemistry",
      {"label": "EAF Bath", "values": {"C": 0.08, "Si": 0.01, "Mn": 0.12, "S": 0.035, "P": 0.012, "Ti": 0.0}}, token=t_op)
 r = call("POST", f"/api/heats/{HN}/stages/eaf/submit", token=t_op)
 assert not r["ok"] and any("Tapping cannot begin" in f["message"] for f in r["findings"]), r
-print("CHRONOLOGY RULE ENFORCED OK (tap before charging end blocked, 6B.16)")
+print("CHRONOLOGY RULE ENFORCED OK — tapping before power-on is blocked")
 call("PUT", f"/api/heats/{HN}/stages/eaf", {"data": {"tap_start": "2026-07-16T08:15"}}, token=t_op)
 # Flux is charged at the same stage but is not metallic charge: the scrap
 # total must ignore it, or every heat's HM% silently drifts.
@@ -471,7 +470,12 @@ defs = call("GET", "/api/stage-defs", token=t_se)["stages"]
 unreachable = []
 for st, d in defs.items():
     for t in d["tiles"]:
-        editor = ("chemistry" if t.get("chemistry") else "materials" if t.get("materials")
+        # A tile carrying fields ALONGSIDE additions (the charge: scrap rows
+        # plus the hot-metal figures) is rendered by the fields editor, which
+        # draws the additions above the inputs — so its fields ARE reachable.
+        # Same reasoning as the chemistry case that prompted this audit.
+        editor = ("fields" if t.get("fields")
+                  else "chemistry" if t.get("chemistry") else "materials" if t.get("materials")
                   else "delays" if t.get("delays") else "route" if t.get("route")
                   else "calculator" if t.get("calculator") else "fields")
         for f in (t.get("fields") or []):

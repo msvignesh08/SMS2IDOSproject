@@ -259,7 +259,7 @@ def submit_stage(db: Session, heat: M.Heat, stage: str, user: M.User) -> list[di
     rec = db.query(M.StageRecord).filter_by(heat_id=heat.id, stage=stage).first()
     chem = [ {"values": c.values, "superseded": c.superseded}
              for c in db.query(M.ChemistrySample).filter_by(heat_id=heat.id, stage=stage)]
-    mats = [ {"quantity": a.quantity, "category": a.material.category,
+    mats = [ {"quantity": a.quantity, "category": a.material.category, "code": a.material.code,
               "point": a.addition_point, "superseded": a.superseded}
              for a in db.query(M.MaterialAddition).filter_by(heat_id=heat.id, stage=stage)]
     dels = [ {"end_time": d.end_time, "reason_id": d.reason_id, "superseded": d.superseded}

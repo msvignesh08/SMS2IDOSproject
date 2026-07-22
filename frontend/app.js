@@ -1578,7 +1578,15 @@ async function renderStage(h, stage) {
     }
     if (t.materials) {
       const rows = sd.materials.filter(m => matchCat(m, t.materials.category, t.materials.point || ""));
-      state = rows.length ? "done" : "todo"; subtitle = `${rows.length} addition(s)`;
+      // A combined tile carries both: report the additions AND keep the
+      // field progress, or the charge tile would claim "done" the moment one
+      // scrap row existed while its mandatory hot-metal figures were empty.
+      if (t.fields) {
+        subtitle = `${rows.length} addition(s) · ${subtitle}`;
+      } else {
+        state = rows.length ? "done" : "todo";
+        subtitle = `${rows.length} addition(s)`;
+      }
     }
     if (t.delays) { state = sd.delays.length ? (sd.delays.some(d => !d.end) ? "part" : "done") : "todo"; subtitle = `${sd.delays.length} delay(s)`; }
     if (t.route) { state = h.route ? "done" : "err"; subtitle = h.route ? `Route ${h.route}` : "decision required"; }
@@ -1678,7 +1686,10 @@ function openTile(h, stage, tile, sd, readonly) {
   if (tile.route) return routeTile(h, readonly);
   if (tile.calculator) return calculatorTile(h);
   if (tile.chemistry) return chemistryTile(h, stage, tile, sd, readonly);
-  if (tile.materials) return materialsTile(h, stage, tile, sd, readonly);
+  // A tile may carry BOTH additions and fields — the charge is one decision
+  // (what went into the furnace), so its scrap rows and its hot-metal figures
+  // belong in one dialog. fieldsTile renders the additions above the fields.
+  if (tile.materials && !tile.fields) return materialsTile(h, stage, tile, sd, readonly);
   if (tile.delays) return delaysTile(h, stage, sd, readonly);
   return fieldsTile(h, stage, tile, sd, readonly);
 }
@@ -1706,6 +1717,41 @@ function fieldInput(f, val) {
     <input type="${type}" step="${f.step || "any"}" data-k="${f.key}" value="${esc(v)}" ${f.auto ? "readonly" : ""}></label>`;
 }
 
+/* The additions half of a combined tile: the rows already recorded, plus one
+   line to add another. Rendered ABOVE the fields because that is the order the
+   charge is made up — scrap goes in first, then the hot metal is poured on. */
+function materialsBlock(tile, sd, readonly) {
+  const cat = tile.materials.category, point = tile.materials.point || "";
+  const cats = Array.isArray(cat) ? cat : [cat];
+  const opts = S.masters.materials.filter(x => cats.includes(x.category));
+  const rows = sd.materials.filter(x => matchCat(x, cat, point));
+  const total = rows.reduce((a, x) => a + x.qty, 0);
+  return `
+    <div class="sec" id="mat-block">
+      <div class="row spread">
+        <h3 style="margin:0">${esc(tile.materials.label)}
+          <span class="muted plain small">· total ${fmtN(total, 2)}</span></h3>
+      </div>
+      <table class="t"><thead><tr><th>Material</th><th>Qty</th><th>Remarks</th><th></th></tr></thead>
+        <tbody>${rows.map(x => `
+          <tr><td>${esc(x.name)}</td><td class="mono">${fmtN(x.qty, 2)} ${esc(x.unit)}</td>
+            <td>${esc(x.remarks || "")}</td>
+            <td>${!readonly ? `<button class="btn small" data-mdel="${x.id}"
+                  title="Supersede Record — preserved forever in audit history">⊘</button>` : ""}</td></tr>`).join("")
+          || `<tr><td colspan="4" class="empty">Nothing charged yet.</td></tr>`}
+        </tbody></table>
+      ${!readonly ? `
+      <div class="fgrid" style="margin-top:var(--sp-2)">
+        <label class="fld"><span>Material</span>
+          <select id="mb-mat">${opts.map(x => `<option value="${x.id}">${esc(x.code)} — ${esc(x.name)}</option>`).join("")}</select></label>
+        <label class="fld"><span>Quantity <span class="unit">${esc(tile.materials.unit || opts[0]?.unit || "t")}</span></span>
+          <input id="mb-qty" type="number" step="any"></label>
+        <label class="fld"><span>Remarks</span><input id="mb-rem"></label>
+      </div>
+      <button class="btn small primary" id="mb-add">＋ Add to charge</button>` : ""}
+    </div>`;
+}
+
 function fieldsTile(h, stage, tile, sd, readonly) {
   const draftKey = `sms2_draft_${h.heat_no}_${stage}`;
   const draft = JSON.parse(localStorage.getItem(draftKey) || "{}");
@@ -1716,6 +1762,7 @@ function fieldsTile(h, stage, tile, sd, readonly) {
     <div class="row spread"><h3>${tile.icon} ${esc(tile.label)} — ${h.heat_no}</h3>
       <span class="autosave" id="asv">${readonly ? "read-only (locked)" : "auto-save on"}</span></div>
     <div class="sub">${esc(S.stageDefs[stage].title)} · fields marked * are mandatory before submission · dashed fields are auto-calculated</div>
+    ${tile.materials ? materialsBlock(tile, sd, readonly) : ""}
     <div class="fgrid">${tile.fields.map(f => fieldInput(f, data[f.key])).join("")}</div>
     ${tile.chemistry ? `<div class="sub" style="margin-top:8px">This tile also carries a chemistry block — use the Chemistry tile to record samples.</div>` : ""}
     <div class="modal-foot">
@@ -1723,6 +1770,41 @@ function fieldsTile(h, stage, tile, sd, readonly) {
       ${!readonly ? `<button class="btn primary" id="tile-save">Save now</button>` : ""}
     </div>`, m => {
     if (readonly) { $$("input,select,textarea", m).forEach(i => i.disabled = true); return; }
+
+    // Additions half of a combined tile. Adding one changes the auto-totals
+    // in the fields below it, so the dialog is rebuilt from fresh server data
+    // rather than patched — the operator must never see a charge line and a
+    // total that disagree.
+    if (tile.materials) {
+      const reopen = async () => {
+        UI.closeModal();
+        const fresh = await GET(`/api/heats/${h.heat_no}/stages/${stage}`);
+        Object.assign(sd, fresh); refreshStage(h, stage);
+        fieldsTile(h, stage, tile, sd, readonly);
+      };
+      const add = $("#mb-add", m);
+      if (add) add.onclick = async () => {
+        const qty = +$("#mb-qty", m).value;
+        if (!(qty > 0)) { toast("Enter a quantity first.", "warn"); return; }
+        try {
+          await POST(`/api/heats/${h.heat_no}/stages/${stage}/materials`, {
+            material_id: +$("#mb-mat", m).value, quantity: qty,
+            remarks: $("#mb-rem", m).value, point: tile.materials.point || "process",
+          });
+          toast("Added to the charge", "ok");
+          await reopen();
+        } catch (e) { toast(e.message, "err", 5000); }
+      };
+      m.addEventListener("click", async e => {
+        const id = e.target.dataset?.mdel;
+        if (!id) return;
+        if (!(await confirmModal("Supersede this addition?",
+              "The record stays in the audit trail but leaves the totals.", "Supersede", true))) return;
+        try { await DEL(`/api/heats/${h.heat_no}/materials/${id}`); await reopen(); }
+        catch (er) { toast(er.message, "err"); }
+      });
+    }
+
     const markReq = () => $$("[data-k]", m).forEach(i => {
       const f = (tile.fields || []).find(x => x.key === i.dataset.k);
       const fl = i.closest(".fld");

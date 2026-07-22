@@ -84,14 +84,14 @@ def validate_stage(stage: str, data: dict, chemistry: list[dict],
 
     # 4 — Chronology (6C.14: timings follow chronological order)
     time_pairs = {
-        "eaf": [("hm_arrival", "hm_charging", "Hot metal arrival must precede charging"),
-                ("charging_start", "charging_end", "Charging start/end reversed"),
+        # The charge is now recorded as hot-metal charging + scrap rows, so
+        # the furnace's own chronology runs charging -> power on -> tapping.
+        "eaf": [("hm_charging", "power_on", "Power cannot be on before the charge goes in"),
                 ("power_on", "power_off", "Power ON/OFF reversed"),
-                ("charging_end", "tap_start", "Tapping cannot begin before charging is completed"),  # 6B.16
+                ("power_on", "tap_start", "Tapping cannot begin before power on"),
                 ("tap_start", "tap_end", "Tap start/end reversed"),
                 ("o2_start", "o2_end", "Oxygen blowing start/end reversed")],
         "zpf": [("zpf_start", "zpf_end", "ZPF start/end reversed"),
-                ("hm_arrival", "hm_charging", "Hot metal arrival must precede charging"),
                 ("blow_on_time", "tap_time", "Blow-ON must precede tapping"),
                 ("o2_start", "o2_end", "Oxygen start/end reversed")],
         "lrf": [("lrf_start", "lrf_end", "LRF start/end reversed"),
@@ -194,7 +194,14 @@ def auto_calculations(stage: str, data: dict, materials: list[dict]) -> dict:
                     if not m.get("superseded") and m.get("category") == "scrap")
         out["total_scrap"] = round(scrap, 2)
         hm = float(data.get("hm_weight") or 0)
-        dri = float(data.get("dri_feed") or 0)
+        # DRI is CHARGED, so it is a material row, not a typed field. It used
+        # to be both — a `dri_feed` box beside a DRI addition — which invited
+        # the two to disagree about the same tonnes. Read it from the charge.
+        dri = sum(float(m["quantity"]) for m in materials
+                  if not m.get("superseded") and m.get("category") == "scrap"
+                  and str(m.get("code") or "").upper() == "DRI")
+        if not dri:                       # heats imported before the change
+            dri = float(data.get("dri_feed") or 0)
         total = hm + scrap
         out["total_charge"] = round(total, 2)
         # Charge composition — computed, never typed (Never Guess, 7.10).
@@ -205,7 +212,6 @@ def auto_calculations(stage: str, data: dict, materials: list[dict]) -> dict:
             out["dri_pct"] = round(dri / total * 100, 1)
     if stage == "eaf":
         dur("power_on", "power_off", "power_on_duration")
-        dur("charging_start", "charging_end", "charging_duration")
         dur("tap_start", "tap_end", "tap_duration")
         # Cycle: power-on to tap, and the tap-to-tap time against the
         # PREVIOUS heat's tap — the rhythm the shop is actually measured on.

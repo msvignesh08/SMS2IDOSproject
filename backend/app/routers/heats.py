@@ -187,7 +187,8 @@ def get_stage(heat_no: str, stage: str, user: M.User = Depends(get_current_user)
         stage, data,
         [{"values": c.values, "superseded": False} for c in chem],
         [{"quantity": m.quantity, "category": m.material.category,
-          "point": m.addition_point, "superseded": False} for m in mats],
+          "code": m.material.code, "point": m.addition_point,
+          "superseded": False} for m in mats],
         [{"end_time": d.end_time, "reason_id": d.reason_id,
           "superseded": False} for d in dels], specs, entry)
     return {"heat": heat_summary(db, h),
@@ -247,6 +248,7 @@ def save_stage(heat_no: str, stage: str, body: StageSave,
     merged = dict(rec.data or {}); merged.update(body.data or {})
     merged.update(auto_calculations(stage, merged,
                                     [{"quantity": m.quantity, "category": m.material.category,
+                                      "code": m.material.code,
                                       "point": m.addition_point} for m in mats]))
     rec.data = merged
     if rec.status == "pending":
@@ -333,9 +335,10 @@ def add_material(heat_no: str, stage: str, body: MatIn,
         merged = dict(rec.data or {})
         merged.update(auto_calculations(stage, merged,
                                         [{"quantity": x.quantity, "point": x.addition_point,
-                                          "category": x.material.category} for x in mats]
+                                          "category": x.material.category,
+                                          "code": x.material.code} for x in mats]
                                         + [{"quantity": body.quantity, "point": point,
-                                            "category": mat.category}]))
+                                            "category": mat.category, "code": mat.code}]))
         rec.data = merged
     db.commit(); return {"ok": True}
 
@@ -681,7 +684,8 @@ def decide_correction(cid: int, body: DecideIn,
                                                   superseded=False).all()
     merged.update(auto_calculations(cr.stage, merged,
                                     [{"quantity": x.quantity, "point": x.addition_point,
-                                      "category": x.material.category} for x in mats]))
+                                      "category": x.material.category,
+                                      "code": x.material.code} for x in mats]))
     rec.data = merged
     rec.version += 1
     cr.status = "approved"
