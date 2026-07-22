@@ -69,3 +69,14 @@ services:
         sync: false
       - key: SMS2_SEED_PASSWORD
         sync: false
+      # ── AI PRODUCTION ENGINEER ───────────────────────────────────────────
+      # OPTIONAL. Leave unset and the deterministic rules engine answers, as
+      # it always has — the reasoning layer simply never engages and no plant
+      # data leaves the site. Set the KEY to turn reasoning on; the model name
+      # is a separate, optional override and does nothing on its own.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Default is claude-opus-4-8. claude-fable-5 reasons harder at roughly
+      # double the price and needs 30-day data retention on the account.
+      - key: SMS2_AI_MODEL
+        sync: false
