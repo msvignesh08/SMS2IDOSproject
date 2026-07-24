@@ -53,3 +53,7 @@ desktop.ini
 
 # ── LOGS ───────────────────────────────────────────────────────────────────
 *.log
+
+# Uploaded import workbooks and their cached analysis. Real production data,
+# often 20 MB+, and reproducible from the source file — never committed.
+backend/data/imports/

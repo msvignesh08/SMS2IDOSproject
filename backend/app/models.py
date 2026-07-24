@@ -409,3 +409,66 @@ class PasswordResetRequest(Base):
     decided_at = Column(DateTime, nullable=True)
     decision_remarks = Column(Text, default="")
     action = Column(String, default="")        # password_reset|account_disabled|rejected
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  EXCEL IMPORT — STAGED, CORRECTED, APPROVED, THEN COMMITTED
+#
+#  A spreadsheet from the shop floor is never trusted straight into
+#  production. It lands in a BATCH, the correction engine reads it and
+#  proposes fixes for what is missing or malformed, a human approves or
+#  rejects each proposal, and only then is anything written to heats.
+#
+#  Nothing here is destructive: the raw cell value is kept beside every
+#  correction, so an approval can always be explained afterwards and a
+#  rejected proposal leaves the original untouched.
+# ═══════════════════════════════════════════════════════════════════════════
+
+class ImportBatch(Base):
+    __tablename__ = "import_batches"
+    id = Column(Integer, primary_key=True)
+    filename = Column(String, default="")
+    size_bytes = Column(Integer, default=0)
+    # uploaded -> analysed -> committed | discarded
+    status = Column(String, default="uploaded", index=True)
+    sheets = Column(JSON, default=dict)      # per-sheet row/column counts
+    stats = Column(JSON, default=dict)       # heats found, issues by severity
+    rows = Column(JSON, default=list)        # parsed + corrected staging rows
+    uploaded_by = Column(Integer, ForeignKey("users.id"))
+    uploaded_by_name = Column(String, default="")
+    uploaded_at = Column(DateTime, default=now)
+    committed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    committed_by_name = Column(String, default="")
+    committed_at = Column(DateTime, nullable=True)
+    commit_result = Column(JSON, default=dict)
+    archived = Column(Boolean, default=False)
+
+
+class ImportIssue(Base):
+    """One thing the engine found wrong, and what it proposes to do about it.
+
+    `proposed` is null for a finding it cannot fix — those are reported, never
+    silently dropped. Everything else waits on a human: THE CORRECTION
+    APPROVAL LAW is that no auto-correction reaches production data until
+    somebody accepts it, whatever their role.
+    """
+    __tablename__ = "import_issues"
+    id = Column(Integer, primary_key=True)
+    batch_id = Column(Integer, ForeignKey("import_batches.id"), nullable=False, index=True)
+    sheet = Column(String, default="")
+    row_no = Column(Integer, default=0)          # 1-based row in the sheet
+    heat_no = Column(String, default="", index=True)
+    field = Column(String, default="")
+    label = Column(String, default="")           # human name of the field
+    severity = Column(String, default="warn", index=True)   # error|warn|info
+    rule = Column(String, default="")            # which rule fired
+    message = Column(Text, default="")
+    raw_value = Column(String, default="")       # exactly what the cell held
+    proposed = Column(String, nullable=True)     # null = cannot auto-correct
+    confidence = Column(String, default="medium")   # high|medium|low
+    basis = Column(Text, default="")             # why the engine proposes this
+    status = Column(String, default="pending", index=True)  # pending|approved|rejected
+    decided_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    decided_by_name = Column(String, default="")
+    decided_at = Column(DateTime, nullable=True)
+    edited_value = Column(String, nullable=True)  # human typed their own instead

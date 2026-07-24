@@ -973,6 +973,7 @@ const routes = {
   dashboard: viewDashboard, entry: viewEntry, heats: viewHeats,
   reports: viewReports, search: viewSearch, calculator: viewCalculator,
   knowledge: viewKnowledge, admin: viewAdmin, heat: viewHeatWorkspace,
+  import: viewImport,
   ai: viewAI, notifications: viewNotifications,
 };
 async function route() {
@@ -1112,6 +1113,27 @@ async function viewDashboard() {
       <div class="kpi glass"><b data-k="delay_min">${fmtN(k.delay_min, 0)}</b><span>Delay minutes</span></div>
       <div class="kpi glass"><b data-k="shift_heats">${k.shift_heats}</b><span>Heats this shift</span></div>
     </div>
+
+    ${d.last_import ? `
+    <div class="sec card glass">
+      <div class="row spread"><h3 style="margin:0">Last data import</h3>
+        <a class="btn small" href="#/import">Open import</a></div>
+      <div class="small muted" style="margin-top:4px">
+        The KPIs above cover today only, so a workbook of past heats moves none of
+        them. This is what that import actually brought in.</div>
+      <div class="kpis" style="margin-top:10px">
+        <div class="kpi glass"><b>${fmtN(d.last_import.heats_written, 0)}</b><span>Heats written</span></div>
+        <div class="kpi glass"><b>${fmtN(d.last_import.rows, 0)}</b><span>Rows read</span></div>
+        <div class="kpi glass"><b>${fmtN(d.last_import.corrections_applied, 0)}</b><span>Corrections approved</span></div>
+        <div class="kpi glass"><b>${fmtN(d.last_import.corrections_rejected, 0)}</b><span>Corrections rejected</span></div>
+      </div>
+      <div class="small muted" style="margin-top:8px">
+        <span class="mono">${esc(d.last_import.filename)}</span> ·
+        committed ${esc((d.last_import.at || "").slice(0, 16))} by ${esc(d.last_import.by || "")}
+        ${d.last_import.already_present ? ` · ${fmtN(d.last_import.already_present, 0)} already present` : ""}
+        ${d.last_import.skipped ? ` · ${fmtN(d.last_import.skipped, 0)} skipped` : ""}
+      </div>
+    </div>` : ""}
 
     <div class="sec card glass">
       <h3>Needs attention</h3>
@@ -4327,3 +4349,238 @@ try { Object.assign(window, {UI, quickApprove, loadHandover, openCreateHeat, abo
   patchDashboardLive, approvalAlert}); } catch (e) { console.error("SMS-2 expose failed (non-fatal):", e); }
 
 boot();
+
+/* ══ EXCEL IMPORT — CORRECTION REVIEW ═══════════════════════════════════════
+   Upload a workbook, see what the correction engine found, and decide each
+   class of fix before anything reaches production data.
+
+   Decisions are grouped by RULE rather than by cell. The plant's real
+   workbook produces ~78,000 correctable findings; presenting them as 78,000
+   checkboxes would be a rubber stamp with extra steps. One decision covers
+   "round Excel float noise" across every sheet, carrying its reasoning and
+   real samples drawn from the file, and every individual finding stays
+   inspectable underneath. ═══════════════════════════════════════════════ */
+
+const IMP = {batch: null};
+
+async function viewImport() {
+  setTitle("Excel Import & Correction Review");
+  const list = await GET("/api/imports");
+  const rows = (list.batches || []).map(b => `<tr>
+      <td class="mono">${esc(b.filename)}</td>
+      <td>${esc((b.uploaded_at || "").slice(0, 16))}</td>
+      <td>${esc(b.uploaded_by || "")}</td>
+      <td class="num">${(b.stats?.rows ?? 0).toLocaleString()}</td>
+      <td class="num">${(b.stats?.heats ?? 0).toLocaleString()}</td>
+      <td class="num">${(b.stats?.issues ?? 0).toLocaleString()}</td>
+      <td><span class="tag ${b.status === "committed" ? "done" : b.status === "failed" ? "error" : "pending"}">${esc(b.status)}</span></td>
+      <td><button class="btn small" data-open="${b.id}">Open</button></td></tr>`).join("");
+
+  $("#view").innerHTML = `
+    <h2 class="pg">Import <small>staged, corrected, approved — production data is written only after you decide</small></h2>
+    <div class="card glass">
+      <div class="row spread"><h3 style="margin:0">Upload a production workbook</h3>
+        <span class="tag">.xlsx · up to 60 MB</span></div>
+      <div class="small muted" style="margin-top:6px">
+        The file is read, checked and staged. <b>Nothing is written to heats</b> until you
+        approve the corrections below and press Commit.</div>
+      <div class="row" style="margin-top:10px;gap:8px">
+        <input type="file" id="imp-file" accept=".xlsx,.xlsm">
+        <button class="btn primary" id="imp-up">Upload &amp; analyse</button>
+      </div>
+      <div id="imp-prog" class="small muted" style="margin-top:8px"></div>
+    </div>
+    <div id="imp-batch"></div>
+    <div class="card glass" style="margin-top:var(--sp-3)">
+      <h3>Previous imports</h3>
+      <div class="scroll-panel"><table class="t"><thead><tr>
+        <th>File</th><th>Uploaded</th><th>By</th><th>Rows</th><th>Heats</th>
+        <th>Findings</th><th>Status</th><th></th></tr></thead><tbody>
+        ${rows || `<tr><td colspan="8" class="muted">No imports yet.</td></tr>`}
+      </tbody></table></div>
+    </div>`;
+
+  $("#imp-up").onclick = impUpload;
+  $("#view").addEventListener("click", async e => {
+    const id = e.target.dataset?.open;
+    if (id) { IMP.batch = await GET(`/api/imports/${id}`); impRenderBatch(); }
+  });
+  if (IMP.batch) impRenderBatch();
+}
+
+async function impUpload() {
+  const f = $("#imp-file").files?.[0];
+  if (!f) { toast("Choose a workbook first.", "warn"); return; }
+  const btn = $("#imp-up");
+  btn.disabled = true;
+  /* A 20 MB workbook with 70,000 rows takes ~30 s to read and check. Say so,
+     rather than leaving the operator watching a dead button. */
+  $("#imp-prog").textContent = `Reading ${f.name} (${(f.size / 1048576).toFixed(1)} MB) — `
+    + `parsing every sheet and checking each row. A full year takes about a minute.`;
+  try {
+    const fd = new FormData();
+    fd.append("file", f);
+    const r = await fetch("/api/imports/upload",
+      {method: "POST", headers: {Authorization: `Bearer ${S.token}`}, body: fd});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || "Upload failed");
+    IMP.batch = await GET(`/api/imports/${d.id}`);
+    $("#imp-prog").textContent = "";
+    impRenderBatch();
+    toast(`Analysed — ${d.stats.heats.toLocaleString()} heats, ${d.stats.issues.toLocaleString()} findings`, "ok", 6000);
+  } catch (er) {
+    $("#imp-prog").textContent = "";
+    toast(er.message, "err", 8000);
+  }
+  btn.disabled = false;
+}
+
+function impKpi(label, val) {
+  return `<div class="kpi glass"><b>${esc(String(val))}</b><span>${esc(label)}</span></div>`;
+}
+
+function impGroupCard(g) {
+  const tone = g.severity === "error" ? "error" : g.severity === "warn" ? "warn" : "";
+  const samples = g.samples.map(s => `<tr>
+      <td class="mono">${esc(s.heat_no || "—")}</td><td>${esc(s.sheet)}</td>
+      <td class="num">${s.row}</td><td>${esc(s.field || "—")}</td>
+      <td class="mono">${esc(s.raw || "(blank)")}</td>
+      <td class="mono">${s.proposed === null ? `<span class="muted">— not correctable</span>` : esc(s.proposed)}</td>
+    </tr>`).join("");
+  return `
+    <div class="finding ${tone}" style="margin-bottom:10px">
+      <div class="row spread">
+        <div><b>${esc(g.title)}</b>
+          <span class="tag ${tone}">${g.count.toLocaleString()} found</span>
+          ${g.fixable
+            ? `<span class="tag done">${g.fixable.toLocaleString()} correctable</span>`
+            : `<span class="tag">report only — fix at source</span>`}
+        </div>
+        <div class="row" style="gap:6px">
+          ${g.fixable ? `
+            <button class="btn small ${g.status === "approved" ? "primary" : ""}"
+                    data-decide="approved" data-rule="${esc(g.rule)}">Approve</button>
+            <button class="btn small ${g.status === "rejected" ? "primary" : ""}"
+                    data-decide="rejected" data-rule="${esc(g.rule)}">Reject</button>` : ""}
+          <button class="btn small" data-drill="${esc(g.rule)}">Inspect</button>
+        </div>
+      </div>
+      <div class="small muted" style="margin-top:6px">${esc(g.basis)}</div>
+      <div class="small" style="margin-top:6px">
+        <span class="muted">Sheets:</span> <span class="mono">${g.sheets.map(esc).join(", ")}</span>
+        ${g.fields.length ? ` · <span class="muted">Fields:</span> ${g.fields.map(esc).join(", ")}` : ""}
+      </div>
+      ${samples ? `<table class="t small" style="margin-top:8px"><thead><tr>
+          <th>Heat</th><th>Sheet</th><th>Row</th><th>Field</th><th>In the file</th><th>Proposed</th>
+        </tr></thead><tbody>${samples}</tbody></table>` : ""}
+      ${g.status !== "pending" ? `<div class="small" style="margin-top:6px">
+        <span class="tag ${g.status === "approved" ? "done" : "error"}">${esc(g.status)}</span>
+        by ${esc(g.decided_by || "")} ${esc((g.decided_at || "").slice(0, 16))}</div>` : ""}
+    </div>`;
+}
+
+function impRenderBatch() {
+  const b = IMP.batch, st = b.stats || {}, groups = st.groups || [];
+  const pending = groups.filter(g => g.fixable && g.status === "pending").length;
+  const sev = st.by_severity || {};
+  const cr = b.commit_result || {};
+  $("#imp-batch").innerHTML = `
+    <div class="card glass accent" style="margin-top:var(--sp-3)">
+      <div class="row spread">
+        <h3 style="margin:0">${esc(b.filename)}</h3>
+        <span class="tag ${b.status === "committed" ? "done" : "pending"}">${esc(b.status)}</span>
+      </div>
+      <div class="kpis" style="margin-top:10px">
+        ${impKpi("Rows read", (st.rows || 0).toLocaleString())}
+        ${impKpi("Heats found", (st.heats || 0).toLocaleString())}
+        ${impKpi("EAF / ZPF", `${st.eaf_heats || 0} / ${st.zpf_heats || 0}`)}
+        ${impKpi("Correctable", (st.correctable || 0).toLocaleString())}
+        ${impKpi("Report only", (st.not_correctable || 0).toLocaleString())}
+      </div>
+      <div class="small muted" style="margin-top:8px">
+        ${sev.error || 0} errors · ${sev.warn || 0} warnings · ${sev.info || 0} notes
+        across ${Object.keys(b.sheets || {}).length} sheets.
+      </div>
+    </div>
+
+    <div class="card glass" style="margin-top:var(--sp-3)">
+      <div class="row spread"><h3 style="margin:0">Corrections awaiting your decision</h3>
+        <span class="tag ${pending ? "warn" : "done"}">${pending ? pending + " undecided" : "all decided"}</span></div>
+      <div class="small muted" style="margin-top:4px">
+        Each row is one class of correction. Approving applies it to every cell it covers;
+        rejecting leaves those cells exactly as the spreadsheet had them.
+      </div>
+      <div id="imp-groups" style="margin-top:10px">${groups.map(impGroupCard).join("")}</div>
+    </div>
+
+    <div class="card glass" style="margin-top:var(--sp-3)">
+      <div class="row spread">
+        <div><b>Commit to production</b>
+          <div class="small muted">Writes the approved result as archived history heats.
+            ${b.status === "committed" ? "" : "Every correctable group must be decided first."}</div></div>
+        <button class="btn primary" id="imp-commit" ${b.status === "committed" || pending ? "disabled" : ""}>
+          ${b.status === "committed" ? "Committed" : "Commit " + (st.heats || 0).toLocaleString() + " heats"}</button>
+      </div>
+      ${cr.heats_written !== undefined ? `
+        <div class="small" style="margin-top:8px">
+          Wrote <b>${cr.heats_written.toLocaleString()}</b> heats ·
+          ${(cr.already_present || 0).toLocaleString()} already present ·
+          ${(cr.skipped || 0).toLocaleString()} skipped.
+          ${cr.rules_rejected?.length
+            ? `Rejected: <span class="mono">${cr.rules_rejected.map(esc).join(", ")}</span>` : ""}
+        </div>` : ""}
+    </div>`;
+
+  $("#imp-groups").addEventListener("click", async e => {
+    const t = e.target;
+    if (t.dataset?.decide) {
+      try {
+        await POST(`/api/imports/${b.id}/decide`, {rule: t.dataset.rule, decision: t.dataset.decide});
+        IMP.batch = await GET(`/api/imports/${b.id}`);
+        impRenderBatch();
+      } catch (er) { toast(er.message, "err", 6000); }
+    }
+    if (t.dataset?.drill) impShowFindings(b.id, t.dataset.drill);
+  });
+
+  const c = $("#imp-commit");
+  if (c) c.onclick = async () => {
+    const ok = await confirmModal("Commit to production",
+      `This writes ${(st.heats || 0).toLocaleString()} heats as archived history, with the `
+      + `corrections you approved applied. It cannot be undone from this screen.`);
+    if (!ok) return;
+    c.disabled = true;
+    c.textContent = "Writing…";
+    try {
+      const r = await POST(`/api/imports/${b.id}/commit`, {});
+      IMP.batch = await GET(`/api/imports/${b.id}`);
+      impRenderBatch();
+      toast(`Committed — ${r.heats_written.toLocaleString()} heats written`, "ok", 8000);
+    } catch (er) { toast(er.message, "err", 9000); c.disabled = false; }
+  };
+}
+
+async function impShowFindings(batchId, rule) {
+  UI.modal(`
+    <h3>Findings — ${esc(rule.replace(/_/g, " "))}</h3>
+    <div id="imp-find"><div class="empty">Reading the workbook…</div></div>
+    <div class="modal-foot"><button class="btn" onclick="UI.closeModal()">Close</button></div>`);
+  const body = $("#imp-find");
+  if (!body) return;
+  try {
+    const d = await GET(`/api/imports/${batchId}/findings?rule=${encodeURIComponent(rule)}&limit=200`);
+    const rows = d.findings.map(f => `<tr>
+        <td>${esc(f.sheet)}</td><td class="num">${f.row_no}</td>
+        <td class="mono">${esc(f.heat_no || "—")}</td><td>${esc(f.label || "—")}</td>
+        <td class="mono">${esc(f.raw_value || "(blank)")}</td>
+        <td class="mono">${f.proposed === null ? `<span class="muted">—</span>` : esc(f.proposed)}</td>
+        <td class="small">${esc(f.message)}</td></tr>`).join("");
+    body.innerHTML = `
+      <div class="small muted">Showing ${Math.min(200, d.total).toLocaleString()} of ${d.total.toLocaleString()}.</div>
+      <div class="scroll-panel lg" style="margin-top:8px"><table class="t"><thead><tr>
+        <th>Sheet</th><th>Row</th><th>Heat</th><th>Field</th>
+        <th>In the file</th><th>Proposed</th><th>Why</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  } catch (e) {
+    body.innerHTML = `<div class="finding error">${esc(e.message)}</div>`;
+  }
+}

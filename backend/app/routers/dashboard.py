@@ -120,11 +120,38 @@ def dashboard(user: M.User = Depends(get_current_user), db: DBSession = Depends(
                               and h.status in ("lrf", "route_selected")],
         },
         "active_heats": strips,
+        # Last committed import. The dashboard's KPIs are scoped to TODAY, so a
+        # workbook of historical heats correctly moves none of them — which
+        # looks like the import did nothing. This says plainly what came in.
+        "last_import": _last_import(db),
         "gantt": gantt,
         "recent": [{"at": e.at.isoformat(sep=" "), "kind": e.kind,
                     "heat_no": e.heat_no, "actor": e.actor_name,
                     "detail": e.detail} for e in recent],
     }
+
+
+def _last_import(db) -> dict | None:
+    b = (db.query(M.ImportBatch)
+         .filter(M.ImportBatch.status == "committed")
+         .order_by(M.ImportBatch.committed_at.desc()).first())
+    if not b:
+        return None
+    r = b.commit_result or {}
+    st = b.stats or {}
+    return {"filename": b.filename,
+            "at": b.committed_at.isoformat(sep=" ") if b.committed_at else "",
+            "by": b.committed_by_name,
+            "heats_written": r.get("heats_written", 0),
+            "already_present": r.get("already_present", 0),
+            "skipped": r.get("skipped", 0),
+            "rows": st.get("rows", 0),
+            "corrections_applied": sum(
+                g.get("fixable", 0) for g in (st.get("groups") or [])
+                if g.get("status") == "approved"),
+            "corrections_rejected": sum(
+                g.get("fixable", 0) for g in (st.get("groups") or [])
+                if g.get("status") == "rejected")}
 
 
 def _strip(db, h: M.Heat):

@@ -11,7 +11,7 @@ from .core.database import Base, engine, SessionLocal
 from .core.config import APP_NAME, APP_VERSION, APP_MOTTO
 from . import models  # noqa: F401 — register models
 from .seed import seed
-from .routers import auth, heats, dashboard, reports, admin, ai
+from .routers import auth, heats, dashboard, reports, admin, ai, imports
 
 app = FastAPI(title=APP_NAME, version=APP_VERSION, description=APP_MOTTO)
 
@@ -21,6 +21,7 @@ app.include_router(dashboard.router)
 app.include_router(reports.router)
 app.include_router(admin.router)
 app.include_router(ai.router)
+app.include_router(imports.router)
 
 
 @app.on_event("startup")
