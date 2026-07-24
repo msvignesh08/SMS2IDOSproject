@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session as DBSession
 from ..core.database import get_db
 from .. import models as M
 from ..engines.insights import compute_insights, push_ai_alerts, answer, MODES
-from ..engines import ai_brain
+from ..engines import ai_brain, advisor
 from .auth import get_current_user
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
@@ -52,3 +52,17 @@ def ask(body: AskIn, user: M.User = Depends(get_current_user),
     if r.get("reason") == "error":
         base["degraded"] = r.get("detail", "")
     return base
+
+
+@router.get("/advisor")
+def production_advisor(days: int = 30,
+                       user: M.User = Depends(get_current_user),
+                       db: DBSession = Depends(get_db)):
+    """Analysis and advice computed from this plant's own heats.
+
+    Deliberately NOT a language model. Every figure here is calculated and
+    carries the heats it came from, so an engineer can check it. That is the
+    property a model of any size cannot offer, and the one that matters when
+    somebody may act on the answer.
+    """
+    return advisor.advise(db, days)

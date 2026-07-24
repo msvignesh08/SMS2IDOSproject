@@ -3581,6 +3581,21 @@ async function viewAI() {
     <div class="row" style="margin-top:8px">
       ${samples.map(s => `<span class="tag pending ai-chip" data-q="${esc(s)}">${esc(s)}</span>`).join(" ")}
     </div>
+    <div class="card glass sec">
+      <div class="row spread">
+        <h3 style="margin:0">Production advisor <small>computed from this plant's heats — no model, no guessing</small></h3>
+        <div class="row" style="gap:6px">
+          <select id="adv-days" class="num-input" style="width:auto">
+            <option value="7">last 7 days</option>
+            <option value="30" selected>last 30 days</option>
+            <option value="90">last 90 days</option>
+            <option value="365">last year</option>
+          </select>
+          <button class="btn small primary" id="adv-go">Analyse</button>
+        </div>
+      </div>
+    </div>
+    <div id="adv-out" class="sec"></div>
     <div id="ai-answer" class="sec"></div>
     <h3 class="eyebrow spaced">Live plant intelligence — computed from your permanent records</h3>
     <div class="grid cols-2" id="ai-insights">
@@ -3640,6 +3655,9 @@ async function viewAI() {
         </div>`;
     } catch (e) { toast(e.message, "err"); }
   };
+  const adv = $("#adv-go");
+  if (adv) adv.onclick = () => { ADV.days = +$("#adv-days").value; loadAdvisor(); };
+  loadAdvisor();
   $("#ai-go").onclick = () => { const q = $("#ai-q").value.trim(); if (q) ask(q); };
   $("#ai-q").addEventListener("keydown", e => { if (e.key === "Enter") $("#ai-go").click(); });
   $("#view").addEventListener("click", e => {
@@ -4742,4 +4760,79 @@ function renderRangeReport(d) {
           <td class="num">${fmtN(x.delay_min, 0)}</td></tr>`).join("")}
       </tbody></table></div>
     </div>`;
+}
+
+
+/* ══ PRODUCTION ADVISOR ═════════════════════════════════════════════════════
+   Findings computed from this plant's own heats, each carrying the numbers it
+   rests on and the heat numbers to check it against.
+
+   Deliberately not model-generated. A figure an engineer may act on has to be
+   calculated, and has to be traceable back to the heats it came from — which
+   is why every card shows its evidence and its sample size rather than a
+   confident sentence. ═══════════════════════════════════════════════════ */
+
+const ADV = {days: 30};
+
+const ADV_TONE = {critical: "error", warning: "warn", opportunity: "", good: "done"};
+const ADV_WORD = {critical: "Act now", warning: "Look into this",
+                  opportunity: "Worth recovering", good: "Healthy"};
+
+async function loadAdvisor() {
+  const box = $("#adv-out");
+  if (!box) return;
+  box.innerHTML = `<div class="empty">Analysing this plant's heats…</div>`;
+  try {
+    const d = await GET(`/api/ai/advisor?days=${ADV.days}`);
+    const b = d.benchmarks || {};
+    const bench = [
+      ["Energy", b.kwh_per_t, "kWh/t"], ["Oxygen", b.o2_per_t, "Nm³/t"],
+      ["Tap-to-tap", b.ttt_min, "min"], ["Tap temp", b.tap_temp, "°C"],
+      ["Hot metal", b.hm_pct, "%"],
+    ].filter(x => x[1]);
+
+    box.innerHTML = `
+      <div class="card glass accent">
+        <div class="row spread">
+          <h3 style="margin:0">Findings — ${esc(d.window[0])} to ${esc(d.window[1])}</h3>
+          <span class="tag">${fmtN(d.heats, 0)} heats</span>
+        </div>
+        <div class="small muted" style="margin-top:4px">
+          Every figure below is computed from those heats and lists the ones it came from.
+          A metric with fewer than ${d.sample_floor} heats behind it is left out rather than
+          reported as a trend.
+        </div>
+      </div>
+
+      ${bench.length ? `<div class="card glass sec">
+        <h3>Benchmarks</h3>
+        <div class="scroll-panel"><table class="t"><thead><tr>
+          <th>Metric</th><th class="num">Heats</th><th class="num">Mean</th>
+          <th class="num">Median</th><th class="num">Lowest</th><th class="num">Highest</th>
+        </tr></thead><tbody>
+          ${bench.map(([n, v, u]) => `<tr>
+            <td><b>${esc(n)}</b> <span class="muted small">${esc(u)}</span></td>
+            <td class="num">${fmtN(v.n, 0)}</td><td class="num">${fmtN(v.mean)}</td>
+            <td class="num">${fmtN(v.median)}</td><td class="num">${fmtN(v.lo)}</td>
+            <td class="num">${fmtN(v.hi)}</td></tr>`).join("")}
+        </tbody></table></div>
+      </div>` : ""}
+
+      <div class="sec">
+        ${(d.findings || []).map(f => `
+          <div class="finding ${ADV_TONE[f.severity] || ""}" style="margin-bottom:10px">
+            <div class="row spread">
+              <b>${esc(f.headline)}</b>
+              <span class="tag ${ADV_TONE[f.severity] || ""}">${esc(ADV_WORD[f.severity] || f.severity)}</span>
+            </div>
+            <div class="small" style="margin-top:6px">${esc(f.evidence)}</div>
+            ${f.action ? `<div class="small" style="margin-top:6px"><b>What to do:</b> ${esc(f.action)}</div>` : ""}
+            ${(f.heats || []).filter(Boolean).length ? `<div class="small muted" style="margin-top:6px">
+              Check: ${f.heats.filter(Boolean).map(h =>
+                `<a class="link mono" href="#/heat/${esc(h)}">${esc(h)}</a>`).join(" · ")}</div>` : ""}
+          </div>`).join("")}
+      </div>`;
+  } catch (e) {
+    box.innerHTML = `<div class="finding error">${esc(e.message)}</div>`;
+  }
 }
