@@ -220,3 +220,64 @@ definitions are prompt-cached, so repeat questions bill the cached prefix at
 about a tenth of that. `claude-fable-5` is available via `SMS2_AI_MODEL` for
 the hardest reasoning — it is roughly double the price and requires 30-day
 data retention on the account, so it is not the default.
+
+---
+
+## Running it on a PC in the plant (recommended)
+
+This is what SMS-2 was built for, and it removes the constraint that makes a
+free hosted tier awkward: reading a full-year workbook peaks around 250 MB,
+and a 512 MB instance has to serve the entire application inside that budget.
+An ordinary office PC has 30× the headroom.
+
+**Start it:** double-click `START-SMS2.bat` in the project root. Leave the
+window open — closing it stops the server.
+
+It prints two addresses:
+
+```
+On this PC        http://localhost:8000
+On the network    http://<this-pc-ip>:8000
+```
+
+Everyone else in the plant uses the second one, in any browser. Nothing is
+installed on their machines.
+
+### One-time setup
+
+**1. Open the port.** Windows blocks incoming connections by default, so other
+machines cannot reach the server until you allow it. Run PowerShell **as
+Administrator**, once:
+
+```
+New-NetFirewallRule -DisplayName "SMS-2 IDOS" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow -Profile Private
+```
+
+`-Profile Private` keeps it to networks Windows treats as private. If the
+plant network is marked Public in Windows, add `,Public` — but do that only on
+a network you control, never on a café or hotel connection.
+
+**2. Give the PC a fixed address.** The launcher prints whatever address the
+router handed out today; if that changes, everyone's bookmark breaks. Ask IT
+for a DHCP reservation, or set a static IP on that machine.
+
+**3. Change the passwords.** Until you do, the seeded demo passwords from
+`app/seed.py` are the live ones. Either use Admin → Users, or uncomment
+`SMS2_ADMIN_PASSWORD` and `SMS2_SEED_PASSWORD` in `START-SMS2.bat` before the
+first start.
+
+### Things worth knowing
+
+- **The database is a file**: `backend/data/sms2_idos.db`. Back it up by
+  copying it, or use Admin → Backup. Unlike the free hosted tier, it does not
+  reset and does not expire.
+- **The PC must stay on** for others to reach it. Sleep stops the server —
+  check Settings → Power for a machine acting as the plant server.
+- **`--workers 1` is deliberate.** The app holds state in the process; a second
+  worker would answer some requests from a different copy of it.
+- **This is a plant-network deployment, not an internet-facing one.** There is
+  no TLS in front of it. Do not port-forward it to the internet — if it needs
+  to be reachable from outside, put it behind a reverse proxy with a
+  certificate and talk to IT first.
+- **To make it start with Windows**, put a shortcut to `START-SMS2.bat` in
+  `shell:startup` (Win+R → `shell:startup`).
