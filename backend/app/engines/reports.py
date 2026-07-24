@@ -6,7 +6,7 @@ assets, 9.30). Training heats are excluded from production reports.
 """
 from __future__ import annotations
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -232,5 +232,183 @@ def export_heat_xlsx(db: Session, heat: M.Heat, user_name: str) -> str:
             f"By {user_name}. Archived permanently in the Report Library.",
             kind="report", heat_no=d["heat_no"])
     db.add(M.ReportArchive(kind="heat", ref=d["heat_no"], fmt="xlsx",
+                           filename=fname, generated_by=user_name))
+    return path
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  DATE-RANGE EXPORTS
+#
+#  The single-day report answers "how did today go". These answer "how did
+#  the month go" — the question asked at a review meeting, and the one that
+#  previously meant exporting thirty files and pasting them together.
+# ═══════════════════════════════════════════════════════════════════════════
+
+MAX_RANGE_DAYS = 366
+
+
+def _range_days(d0: date, d1: date) -> list:
+    if d1 < d0:
+        d0, d1 = d1, d0            # accept the dates either way round
+    span = (d1 - d0).days + 1
+    if span > MAX_RANGE_DAYS:
+        raise ValueError(f"Range is {span} days. Export at most "
+                         f"{MAX_RANGE_DAYS} days at a time.")
+    return [d0 + timedelta(days=i) for i in range(span)]
+
+
+def range_report_data(db: Session, d0: date, d1: date) -> dict:
+    """Every plant day in the range, plus the totals across it."""
+    days = _range_days(d0, d1)
+    per_day, heats, delays = [], [], []
+    tot = {"heats": 0, "billets": 0, "billet_t": 0.0, "energy_kwh": 0.0,
+           "o2_nm3": 0.0, "delay_count": 0, "delay_min": 0.0}
+    per_shift = {}
+    per_grade = {}
+    for day in days:
+        d = daily_report_data(db, day)
+        t = d["totals"]
+        per_day.append({"plant_day": d["plant_day"], **t})
+        for k in tot:
+            tot[k] += t.get(k, 0) or 0
+        for h in d["heats"]:
+            heats.append({"plant_day": d["plant_day"], **h})
+            g = per_grade.setdefault(h["grade"] or "-", {"heats": 0, "billet_t": 0.0})
+            g["heats"] += 1
+            g["billet_t"] += float(h.get("billet_t") or 0)
+        for s, v in (d["per_shift"] or {}).items():
+            acc = per_shift.setdefault(s, {"heats": 0, "billets": 0, "tonnes": 0.0})
+            acc["heats"] += v["heats"]
+            acc["billets"] += v["billets"]
+            acc["tonnes"] += v["tonnes"]
+        for x in d["delays"]:
+            delays.append({"plant_day": d["plant_day"], **x})
+    for k in ("billet_t", "energy_kwh", "o2_nm3", "delay_min"):
+        tot[k] = round(tot[k], 1)
+    return {"from": days[0].isoformat(), "to": days[-1].isoformat(),
+            "days": len(days), "per_day": per_day, "heats": heats,
+            "delays": delays, "totals": tot,
+            "per_shift": per_shift, "per_grade": per_grade}
+
+
+def export_range_xlsx(db: Session, d0: date, d1: date, user_name: str) -> str:
+    d = range_report_data(db, d0, d1)
+    wb = Workbook()
+
+    ws = wb.active
+    ws.title = "Summary"
+    _sheet_header(ws, "PRODUCTION REPORT",
+                  f"Plant days {d['from']} to {d['to']}  "
+                  f"({d['days']} days, 22:00 to 22:00)")
+    t = d["totals"]
+    r = _table(ws, 6, ["Days", "Heats", "Billets", "Billet Wt (t)", "Energy (kWh)",
+                       "O2 (Nm3)", "Delays", "Delay (min)"],
+               [[d["days"], t["heats"], t["billets"], t["billet_t"],
+                 t["energy_kwh"], t["o2_nm3"], t["delay_count"], t["delay_min"]]])
+    ws.cell(row=r, column=1, value="BY SHIFT").font = Font(bold=True)
+    r = _table(ws, r + 1, ["Shift", "Heats", "Billets", "Billet Wt (t)"],
+               [[s, v["heats"], v["billets"], round(v["tonnes"], 1)]
+                for s, v in sorted(per_shift_items(d))])
+    ws.cell(row=r, column=1, value="BY GRADE").font = Font(bold=True)
+    _table(ws, r + 1, ["Grade", "Heats", "Billet Wt (t)"],
+           [[g, v["heats"], round(v["billet_t"], 1)]
+            for g, v in sorted(d["per_grade"].items(), key=lambda x: -x[1]["heats"])])
+
+    ws2 = wb.create_sheet("Per Day")
+    _sheet_header(ws2, "DAY BY DAY", f"{d['from']} to {d['to']}")
+    _table(ws2, 6, ["Plant Day", "Heats", "Billets", "Billet Wt (t)",
+                    "Energy (kWh)", "O2 (Nm3)", "Delays", "Delay (min)"],
+           [[x["plant_day"], x["heats"], x["billets"], x["billet_t"],
+             x["energy_kwh"], x["o2_nm3"], x["delay_count"], x["delay_min"]]
+            for x in d["per_day"]])
+
+    ws3 = wb.create_sheet("Heats")
+    _sheet_header(ws3, "EVERY HEAT", f"{d['from']} to {d['to']}")
+    _table(ws3, 6, ["Plant Day", "Heat No", "Grade", "Shift", "Route", "Status",
+                    "Tap Wt (t)", "Energy (kWh)", "O2 (Nm3)", "Billets",
+                    "Billet Wt (t)", "Yield %"],
+           [[h["plant_day"], h["heat_no"], h["grade"], h["shift"], h["route"],
+             h["status"], h["tap_weight"], h["energy_kwh"], h["o2"],
+             h["billets"], h["billet_t"], h["yield_pct"]] for h in d["heats"]])
+
+    ws4 = wb.create_sheet("Delays")
+    _sheet_header(ws4, "DELAY REPORT", f"{d['from']} to {d['to']}")
+    _table(ws4, 6, ["Plant Day", "Heat No", "Stage", "Category", "Reason",
+                    "Duration (min)", "Remarks"],
+           [[x["plant_day"], x["heat_no"], x["stage"], x["category"],
+             x["reason"], x["duration_min"], x["remarks"]] for x in d["delays"]])
+
+    fname = f"production_{d['from']}_to_{d['to']}_{datetime.now():%H%M%S}.xlsx"
+    path = os.path.join(REPORT_DIR, fname)
+    wb.save(path)
+    from .lifecycle import notify as _notify
+    _notify(db, f"Report generated - production {d['from']} to {d['to']}",
+            f"By {user_name}. {t['heats']} heats. Archived in the Report Library.",
+            kind="report")
+    db.add(M.ReportArchive(kind="range", ref=f"{d['from']}..{d['to']}", fmt="xlsx",
+                           filename=fname, generated_by=user_name))
+    return path
+
+
+def per_shift_items(d):
+    return d["per_shift"].items()
+
+
+def export_audit_xlsx(db: Session, d0: date, d1: date, user_name: str,
+                      category: str = "", heat_no: str = "") -> str:
+    """The audit trail over a date range.
+
+    THE AUDIT IS APPEND-ONLY AND SO IS ITS EXPORT: this reads, it never drops
+    an entry to make the record look tidier.
+
+    The bounds are resolved through the Plant Date Engine, so a range means
+    PLANT days - 22:00 to 22:00 - not calendar midnights. Exporting a plant
+    day and getting a calendar day would silently move every night-shift
+    entry into the wrong report, which is exactly the kind of quiet error an
+    audit trail exists to prevent.
+    """
+    days = _range_days(d0, d1)
+    w0 = plant_time.plant_day_window(days[0])[0]
+    w1 = plant_time.plant_day_window(days[-1])[1]
+    q = (db.query(M.AuditLog)
+         .filter(M.AuditLog.at >= w0, M.AuditLog.at <= w1)
+         .order_by(M.AuditLog.at.asc()))
+    if category:
+        q = q.filter(M.AuditLog.category == category)
+    if heat_no:
+        q = q.filter(M.AuditLog.heat_no == heat_no.strip().upper())
+    rows = q.all()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Audit Trail"
+    scope = f"Plant days {days[0]} to {days[-1]}"
+    if category:
+        scope += f" - category {category}"
+    if heat_no:
+        scope += f" - heat {heat_no.upper()}"
+    _sheet_header(ws, "IMMUTABLE AUDIT TRAIL", scope)
+    _table(ws, 6, ["Timestamp", "User", "Category", "Action", "Heat No", "Detail"],
+           [[a.at.strftime("%Y-%m-%d %H:%M:%S"), a.user_name or "-",
+             a.category, a.action, a.heat_no or "-", (a.detail or "")[:500]]
+            for a in rows])
+
+    ws2 = wb.create_sheet("Summary")
+    _sheet_header(ws2, "ACTIVITY SUMMARY", scope)
+    by_cat = {}
+    by_user = {}
+    for a in rows:
+        by_cat[a.category or "-"] = by_cat.get(a.category or "-", 0) + 1
+        by_user[a.user_name or "-"] = by_user.get(a.user_name or "-", 0) + 1
+    r = _table(ws2, 6, ["Category", "Entries"],
+               [[k, v] for k, v in sorted(by_cat.items(), key=lambda x: -x[1])])
+    ws2.cell(row=r, column=1, value="BY USER").font = Font(bold=True)
+    _table(ws2, r + 1, ["User", "Entries"],
+           [[k, v] for k, v in sorted(by_user.items(), key=lambda x: -x[1])])
+
+    fname = f"audit_{days[0]}_to_{days[-1]}_{datetime.now():%H%M%S}.xlsx"
+    path = os.path.join(REPORT_DIR, fname)
+    wb.save(path)
+    db.add(M.ReportArchive(kind="audit", ref=f"{days[0]}..{days[-1]}", fmt="xlsx",
                            filename=fname, generated_by=user_name))
     return path

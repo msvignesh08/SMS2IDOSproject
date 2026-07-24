@@ -2,7 +2,7 @@
 audit log access, backup, maintenance mode, system settings."""
 from __future__ import annotations
 import os, shutil, sqlite3
-from datetime import datetime
+from datetime import date, datetime
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -357,9 +357,19 @@ def set_series(body: SeriesIn, user: M.User = Depends(require_perm("admin")),
 
 @router.get("/audit")
 def audit_log(category: str | None = None, heat_no: str | None = None,
+              date_from: str | None = None, date_to: str | None = None,
               limit: int = 200, user: M.User = Depends(require_perm("admin")),
               db: DBSession = Depends(get_db)):
     q = db.query(M.AuditLog).order_by(M.AuditLog.at.desc())
+    # Bounds are PLANT days (22:00 to 22:00), resolved through the Plant Date
+    # Engine. Filtering on calendar midnights would move every night-shift
+    # entry into the neighbouring day's report.
+    if date_from:
+        q = q.filter(M.AuditLog.at >=
+                     plant_time.plant_day_window(date.fromisoformat(date_from))[0])
+    if date_to:
+        q = q.filter(M.AuditLog.at <=
+                     plant_time.plant_day_window(date.fromisoformat(date_to))[1])
     if category:
         q = q.filter(M.AuditLog.category == category)
     if heat_no:
@@ -368,6 +378,30 @@ def audit_log(category: str | None = None, heat_no: str | None = None,
              "category": a.category, "action": a.action,
              "heat_no": a.heat_no, "detail": a.detail}
             for a in q.limit(limit)]
+
+
+@router.get("/audit/xlsx")
+def audit_xlsx(date_from: str, date_to: str, category: str = "", heat_no: str = "",
+               user: M.User = Depends(require_perm("admin")),
+               db: DBSession = Depends(get_db)):
+    """The audit trail for a span of plant days, as a workbook.
+
+    Exporting the audit is itself audited — a record of who read the record.
+    """
+    from ..engines.reports import export_audit_xlsx
+    try:
+        path = export_audit_xlsx(db, date.fromisoformat(date_from),
+                                 date.fromisoformat(date_to), user.name,
+                                 category, heat_no)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    audit(db, user, "admin", "audit_xlsx_export",
+          detail=f"{date_from} to {date_to}"
+                 + (f" · {category}" if category else "")
+                 + (f" · {heat_no.upper()}" if heat_no else ""))
+    db.commit()
+    return FileResponse(path, filename=os.path.basename(path),
+                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 @router.get("/settings")

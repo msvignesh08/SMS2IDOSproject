@@ -12,7 +12,8 @@ from ..core import plant_time
 from .. import models as M
 from ..engines import lifecycle as L
 from ..engines.reports import (daily_report_data, heat_report_data,
-                               export_daily_xlsx, export_heat_xlsx, REPORT_DIR)
+                               export_daily_xlsx, export_heat_xlsx, REPORT_DIR,
+                               export_range_xlsx, range_report_data)
 from ..engines.stage_config import STAGE_DEFS
 from .auth import get_current_user, require_perm
 
@@ -56,6 +57,35 @@ def heat_xlsx(heat_no: str, user: M.User = Depends(require_perm("reports.export"
         raise HTTPException(404, "Heat not found")
     path = export_heat_xlsx(db, h, user.name)
     L.audit(db, user, "report", "heat_xlsx_export", heat_no=h.heat_no)
+    db.commit()
+    return FileResponse(path, filename=os.path.basename(path),
+                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@router.get("/reports/range")
+def range_report(date_from: str, date_to: str,
+                 user: M.User = Depends(get_current_user),
+                 db: DBSession = Depends(get_db)):
+    """Production across a span of plant days, on screen."""
+    try:
+        return range_report_data(db, date.fromisoformat(date_from),
+                                 date.fromisoformat(date_to))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.get("/reports/range/xlsx")
+def range_xlsx(date_from: str, date_to: str,
+               user: M.User = Depends(require_perm("reports.export")),
+               db: DBSession = Depends(get_db)):
+    """The same span as a workbook — summary, per day, every heat, delays."""
+    try:
+        path = export_range_xlsx(db, date.fromisoformat(date_from),
+                                 date.fromisoformat(date_to), user.name)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    L.audit(db, user, "report", "range_xlsx_export",
+            detail=f"{date_from} to {date_to}")
     db.commit()
     return FileResponse(path, filename=os.path.basename(path),
                         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

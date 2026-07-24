@@ -2431,6 +2431,7 @@ async function viewHeats() {
 
 /* ───────────────────────── REPORTS & ANALYTICS ───────────────────────── */
 async function viewReports() {
+  const weekAgo = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
   setTitle("Reports & Analytics Center");
   if (!can("reports.view")) { $("#view").innerHTML = `<div class="card glass empty">Your role does not include report access.</div>`; return; }
   const today = S.plant?.plant_day || new Date().toISOString().slice(0,10);
@@ -2445,6 +2446,14 @@ async function viewReports() {
       <button class="btn" id="rp-heat-go">Open</button>
       ${can("reports.export") ? `<button class="btn" id="rp-heat-xlsx">⬇ Heat Excel</button>` : ""}
       <button class="btn primary" id="rp-audit" title="Download a presentation-ready audit and performance dashboard">◫ Audit report</button>
+    </div>
+    <div class="filter-bar card glass" style="margin-top:var(--sp-3)">
+      <label class="fld"><span>From</span><input type="date" id="rp-from" value="${weekAgo}"></label>
+      <label class="fld"><span>To</span><input type="date" id="rp-to" value="${today}"></label>
+      <button class="btn primary" id="rp-range">Load range</button>
+      ${can("reports.export") ? `<button class="btn" id="rp-range-xlsx">⬇ Production Excel</button>` : ""}
+      ${isAdmin() ? `<button class="btn" id="rp-audit-xlsx">⬇ Audit Excel</button>` : ""}
+      <span class="small muted">Plant days, 22:00 to 22:00. Up to a year at a time.</span>
     </div>
     <div id="rp-out" class="sec"></div>
     <div class="sec card glass"><h3>Analytics — last 14 plant days</h3><div id="rp-analytics" class="empty">Loading…</div></div>
@@ -2487,6 +2496,18 @@ async function viewReports() {
   };
   $("#rp-load").onclick = () => loadDaily().catch(e=>toast(e.message,"err"));
   const dx = $("#rp-xlsx"); if (dx) dx.onclick = () => download(`/api/reports/daily/xlsx?plant_day=${$("#rp-day").value}`, "daily.xlsx");
+  const _range = () => `date_from=${$("#rp-from").value}&date_to=${$("#rp-to").value}`;
+  const rr = $("#rp-range");
+  if (rr) rr.onclick = async () => {
+    try {
+      const d = await GET(`/api/reports/range?${_range()}`);
+      renderRangeReport(d);
+    } catch (e) { toast(e.message, "err", 6000); }
+  };
+  const rx = $("#rp-range-xlsx");
+  if (rx) rx.onclick = () => download(`/api/reports/range/xlsx?${_range()}`, "production.xlsx");
+  const ax = $("#rp-audit-xlsx");
+  if (ax) ax.onclick = () => download(`/api/admin/audit/xlsx?${_range()}`, "audit.xlsx");
   $("#rp-heat-go").onclick = () => { const v = $("#rp-heat").value.trim(); if (v) location.hash = `#/heat/${v.toUpperCase()}/review`; };
   const ra = $("#rp-audit"); if (ra) ra.onclick = () => downloadAuditReport(14);
   const hx = $("#rp-heat-xlsx"); if (hx) hx.onclick = () => { const v = $("#rp-heat").value.trim().toUpperCase(); if (v) download(`/api/reports/heat/${v}/xlsx`, `heat_${v}.xlsx`); };
@@ -3148,6 +3169,9 @@ async function adminAudit(body) {
     const p = new URLSearchParams();
     if ($("#aud-cat").value) p.set("category", $("#aud-cat").value);
     if ($("#aud-heat").value.trim()) p.set("heat_no", $("#aud-heat").value.trim().toUpperCase());
+    if ($("#aud-from").value) p.set("date_from", $("#aud-from").value);
+    if ($("#aud-to").value) p.set("date_to", $("#aud-to").value);
+    p.set("limit", "500");
     const rows = await GET("/api/admin/audit?" + p.toString());
     $("#aud-rows").innerHTML = rows.map(a=>`<tr>
       <td class="mono">${a.at.slice(0,19)}</td><td>${esc(a.user)}</td>
@@ -3163,13 +3187,26 @@ async function adminAudit(body) {
         <label class="fld"><span>Category</span><select id="aud-cat"><option value="">all</option>
           ${["auth","production","approval","admin","report","system"].map(c=>`<option>${c}</option>`).join("")}</select></label>
         <label class="fld"><span>Heat no</span><input id="aud-heat" class="mono" style="text-transform:uppercase"></label>
+        <label class="fld"><span>From</span><input type="date" id="aud-from"></label>
+        <label class="fld"><span>To</span><input type="date" id="aud-to"></label>
         <button class="btn primary" id="aud-go">Filter</button>
+        <button class="btn" id="aud-xlsx">⬇ Export Excel</button>
       </div>
+      <div class="small muted">Dates are plant days (22:00 to 22:00), so a night shift stays
+        with the day it belongs to. Leave them blank for the most recent entries.</div>
       <div class="scroll-panel lg" style="margin-top:var(--sp-3)"><table class="t"><thead><tr>
         <th>Time</th><th>User</th><th>Category</th><th>Action</th><th>Heat</th><th>Detail</th></tr></thead>
         <tbody id="aud-rows"></tbody></table></div>
     </div>`;
   $("#aud-go").onclick = () => load().catch(e=>toast(e.message,"err"));
+  $("#aud-xlsx").onclick = () => {
+    const f = $("#aud-from").value, t = $("#aud-to").value;
+    if (!f || !t) { toast("Choose a From and To date to export.", "warn"); return; }
+    const p = new URLSearchParams({date_from: f, date_to: t});
+    if ($("#aud-cat").value) p.set("category", $("#aud-cat").value);
+    if ($("#aud-heat").value.trim()) p.set("heat_no", $("#aud-heat").value.trim().toUpperCase());
+    download(`/api/admin/audit/xlsx?${p}`, "audit.xlsx");
+  };
   load();
 }
 
@@ -4638,4 +4675,71 @@ async function impShowFindings(batchId, rule) {
   } catch (e) {
     body.innerHTML = `<div class="finding error">${esc(e.message)}</div>`;
   }
+}
+
+
+/* Range production report, rendered on screen. The Excel export carries the
+   same figures — this is so a shift engineer can answer the question without
+   opening a spreadsheet, and check the numbers before sending the file on. */
+function renderRangeReport(d) {
+  const t = d.totals;
+  const shifts = Object.entries(d.per_shift || {}).sort();
+  const grades = Object.entries(d.per_grade || {}).sort((a, b) => b[1].heats - a[1].heats).slice(0, 12);
+  $("#rp-out").innerHTML = `
+    <div class="card glass accent">
+      <div class="row spread">
+        <h3 style="margin:0">Production — ${esc(d.from)} to ${esc(d.to)}</h3>
+        <span class="tag">${d.days} plant day${d.days === 1 ? "" : "s"}</span>
+      </div>
+      <div class="kpis" style="margin-top:10px">
+        <div class="kpi glass hot"><b>${fmtN(t.heats, 0)}</b><span>Heats</span></div>
+        <div class="kpi glass"><b>${fmtN(t.billet_t)}</b><span>Billet tonnes</span></div>
+        <div class="kpi glass"><b>${fmtN(t.billets, 0)}</b><span>Billets</span></div>
+        <div class="kpi glass"><b>${fmtN(t.energy_kwh, 0)}</b><span>Energy kWh</span></div>
+        <div class="kpi glass"><b>${fmtN(t.o2_nm3, 0)}</b><span>Oxygen Nm³</span></div>
+        <div class="kpi glass"><b>${fmtN(t.delay_min, 0)}</b><span>Delay minutes</span></div>
+      </div>
+      ${t.heats === 0 ? `<div class="small muted" style="margin-top:10px">
+        No heats fall in this range. Check the dates — a plant day runs 22:00 to 22:00,
+        so a heat tapped just before midnight belongs to the following plant day.</div>` : ""}
+    </div>
+
+    <div class="grid cols-2 sec">
+      <div class="card glass">
+        <h3>By shift</h3>
+        <table class="t"><thead><tr><th>Shift</th><th class="num">Heats</th>
+          <th class="num">Billets</th><th class="num">Tonnes</th></tr></thead><tbody>
+          ${shifts.map(([s, v]) => `<tr><td><b>${esc(s)}</b></td>
+            <td class="num">${fmtN(v.heats, 0)}</td><td class="num">${fmtN(v.billets, 0)}</td>
+            <td class="num">${fmtN(v.tonnes)}</td></tr>`).join("")
+            || `<tr><td colspan="4" class="empty">No shift data.</td></tr>`}
+        </tbody></table>
+      </div>
+      <div class="card glass">
+        <h3>By grade <small>top 12</small></h3>
+        <table class="t"><thead><tr><th>Grade</th><th class="num">Heats</th>
+          <th class="num">Tonnes</th></tr></thead><tbody>
+          ${grades.map(([g, v]) => `<tr><td class="mono">${esc(g)}</td>
+            <td class="num">${fmtN(v.heats, 0)}</td>
+            <td class="num">${fmtN(v.billet_t)}</td></tr>`).join("")
+            || `<tr><td colspan="3" class="empty">No grade data.</td></tr>`}
+        </tbody></table>
+      </div>
+    </div>
+
+    <div class="card glass sec">
+      <h3>Day by day</h3>
+      <div class="scroll-panel"><table class="t"><thead><tr>
+        <th>Plant day</th><th class="num">Heats</th><th class="num">Billets</th>
+        <th class="num">Tonnes</th><th class="num">Energy kWh</th>
+        <th class="num">O₂ Nm³</th><th class="num">Delays</th><th class="num">Delay min</th>
+      </tr></thead><tbody>
+        ${(d.per_day || []).map(x => `<tr>
+          <td class="mono">${esc(x.plant_day)}</td>
+          <td class="num">${fmtN(x.heats, 0)}</td><td class="num">${fmtN(x.billets, 0)}</td>
+          <td class="num">${fmtN(x.billet_t)}</td><td class="num">${fmtN(x.energy_kwh, 0)}</td>
+          <td class="num">${fmtN(x.o2_nm3, 0)}</td><td class="num">${fmtN(x.delay_count, 0)}</td>
+          <td class="num">${fmtN(x.delay_min, 0)}</td></tr>`).join("")}
+      </tbody></table></div>
+    </div>`;
 }
