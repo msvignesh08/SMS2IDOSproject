@@ -3550,10 +3550,8 @@ async function viewAI() {
     .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
     .replace(/^\s*[-*]\s+(.*)$/gm, '<li>$1</li>')
     .replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>')
-    .replace(/
-{2,}/g, '</p><p>')
-    .replace(/
-/g, '<br>');
+    .replace(/\n{2,}/g, '</p><p>')
+    .replace(/\n/g, '<br>');
 
   const ask = async q => {
     $("#ai-answer").innerHTML = `<div class="card glass empty">Analyzing plant records…</div>`;
