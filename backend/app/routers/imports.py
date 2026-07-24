@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import collections
 import copy
+import threading
+import traceback
 import gzip
 import json
 import os
@@ -126,7 +128,7 @@ def _group(issues: list) -> list[dict]:
             "count": len(items),
             "fixable": len(fixable),
             "severity": sev,
-            "basis": (fixable or items)[0]["basis"],
+            "basis": IR.basis_of(rule),
             "sheets": sorted({i["sheet"] for i in items}),
             "fields": sorted({i["label"] for i in items if i["label"]})[:8],
             "samples": [{"sheet": i["sheet"], "row": i["row_no"],
@@ -189,24 +191,46 @@ async def upload(file: UploadFile = File(...),
         raise
 
     b.size_bytes = size
-    try:
-        res = _analysis(b)
-    except Exception as e:                                    # noqa: BLE001
-        b.status = "failed"
-        b.stats = {"error": f"{type(e).__name__}: {e}"[:300]}
-        db.commit()
-        raise HTTPException(400, f"Could not read that workbook: {e}"[:300])
-
-    groups = _group(res["issues"])
-    b.sheets = res["sheets"]
-    b.stats = {**res["stats"], "groups": groups}
-    b.status = "analysed"
+    b.status = "analysing"
     audit(db, user, "admin", "import_uploaded",
-          detail=f"{b.filename} · {res['stats']['rows']} rows · "
-                 f"{res['stats']['heats']} heats · {res['stats']['issues']} findings")
+          detail=f"{b.filename} · {size // 1048576} MB")
     db.commit()
+
+    # ANALYSE OUT OF BAND, NOT INSIDE THIS REQUEST.
+    #
+    # Reading the plant's real 20 MB workbook takes ~50 s here and several
+    # minutes on a small shared instance, and peaks around 280 MB. Doing that
+    # inside the upload meant the connection was closed — by the host's
+    # timeout or an out-of-memory kill — before any reply was written, so the
+    # browser received a truncated body and reported "Unexpected end of JSON
+    # input". The upload now returns immediately and the client polls.
+    threading.Thread(target=_analyse_batch, args=(b.id,), daemon=True).start()
     return {"id": b.id, "filename": b.filename, "size_bytes": size,
-            "sheets": b.sheets, "stats": b.stats}
+            "status": "analysing", "stats": {}, "sheets": {}}
+
+
+def _analyse_batch(batch_id: int) -> None:
+    """Background analysis. Owns its own session — the request's is long gone."""
+    from ..core.database import SessionLocal
+    db = SessionLocal()
+    try:
+        b = db.get(M.ImportBatch, batch_id)
+        if not b:
+            return
+        try:
+            res = _analysis(b)
+            b.sheets = res["sheets"]
+            b.stats = {**res["stats"], "groups": _group(res["issues"])}
+            b.status = "analysed"
+        except Exception as e:                                # noqa: BLE001
+            # Record WHY, so the screen can say it instead of showing a
+            # spinner that never resolves.
+            b.status = "failed"
+            b.stats = {"error": f"{type(e).__name__}: {e}"[:400]}
+            traceback.print_exc()
+        db.commit()
+    finally:
+        db.close()
 
 
 @router.get("/{batch_id}")

@@ -258,14 +258,27 @@ class Issue(dict):
     pass
 
 
+# Why each rule believes its correction is right. Held ONCE per rule rather
+# than copied onto every finding: these paragraphs run ~300 characters and
+# float_noise alone fires 47,613 times, so per-finding storage cost hundreds
+# of megabytes on a 512 MB box for text that never varies.
+BASIS: dict[str, str] = {}
+
+
 def _issue(sheet, row_no, heat_no, field, severity, rule, message,
            raw="", proposed=None, confidence="medium", basis=""):
+    if basis and rule not in BASIS:
+        BASIS[rule] = basis
     return Issue(sheet=sheet, row_no=row_no, heat_no=heat_no or "",
                  field=field, label=label_of(field), severity=severity,
                  rule=rule, message=message,
                  raw_value="" if raw is None else str(raw)[:200],
                  proposed=None if proposed is None else str(proposed)[:200],
-                 confidence=confidence, basis=basis)
+                 confidence=confidence)
+
+
+def basis_of(rule: str) -> str:
+    return BASIS.get(rule, "")
 
 
 def analyse(wb, limit_rows: int | None = None) -> dict:
@@ -562,6 +575,7 @@ def analyse(wb, limit_rows: int | None = None) -> dict:
     correctable = sum(1 for i in issues if i["proposed"] is not None)
 
     return {"rows": rows, "issues": issues, "sheets": sheet_stats,
+            "basis": dict(BASIS),
             "stats": {"rows": len(rows), "heats": len(heats),
                       "issues": len(issues), "by_severity": by_sev,
                       "correctable": correctable,

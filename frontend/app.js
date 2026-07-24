@@ -4422,12 +4422,49 @@ async function impUpload() {
     fd.append("file", f);
     const r = await fetch("/api/imports/upload",
       {method: "POST", headers: {Authorization: `Bearer ${S.token}`}, body: fd});
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || "Upload failed");
-    IMP.batch = await GET(`/api/imports/${d.id}`);
-    $("#imp-prog").textContent = "";
-    impRenderBatch();
-    toast(`Analysed — ${d.stats.heats.toLocaleString()} heats, ${d.stats.issues.toLocaleString()} findings`, "ok", 6000);
+    /* Read the body as TEXT first. A server that was killed mid-reply — out of
+       memory, or cut off by a proxy timeout — sends an empty or truncated
+       body, and calling r.json() on that throws the browser's raw "Unexpected
+       end of JSON input", which tells an operator nothing. */
+    const body = await r.text();
+    let d;
+    try { d = JSON.parse(body); }
+    catch {
+      throw new Error(r.ok
+        ? `The server accepted the file but its reply was cut off (HTTP ${r.status}). `
+          + `This usually means the instance ran out of memory or the request timed out. `
+          + `The upload may still be processing — reopen Import in a minute to check.`
+        : `Upload failed: HTTP ${r.status} ${r.statusText}. The server sent no readable reply.`);
+    }
+    if (!r.ok) throw new Error(d.detail || `Upload failed (HTTP ${r.status})`);
+
+    /* The analysis runs out of band, so wait for it rather than assuming the
+       upload response already carries the findings. */
+    $("#imp-prog").textContent = `Uploaded. Reading ${f.name} — parsing every sheet `
+      + `and checking each row. A full year takes a minute or two.`;
+    const started = Date.now();
+    while (Date.now() - started < 15 * 60000) {
+      await new Promise(res => setTimeout(res, 3000));
+      let b;
+      try { b = await GET(`/api/imports/${d.id}`); }
+      catch { continue; }              // instance restarting; keep waiting
+      if (b.status === "analysed") {
+        IMP.batch = b;
+        $("#imp-prog").textContent = "";
+        impRenderBatch();
+        toast(`Analysed — ${(b.stats.heats || 0).toLocaleString()} heats, `
+              + `${(b.stats.issues || 0).toLocaleString()} findings`, "ok", 6000);
+        return;
+      }
+      if (b.status === "failed") {
+        $("#imp-prog").textContent = "";
+        throw new Error(b.stats?.error || "The workbook could not be read.");
+      }
+      const secs = Math.round((Date.now() - started) / 1000);
+      $("#imp-prog").textContent = `Reading ${f.name} — ${secs}s elapsed. `
+        + `You can leave this page; the analysis continues on the server.`;
+    }
+    throw new Error("Still analysing after 15 minutes. Reopen Import to check on it.");
   } catch (er) {
     $("#imp-prog").textContent = "";
     toast(er.message, "err", 8000);
@@ -4481,6 +4518,24 @@ function impGroupCard(g) {
 
 function impRenderBatch() {
   const b = IMP.batch, st = b.stats || {}, groups = st.groups || [];
+  if (b.status === "analysing") {
+    $("#imp-batch").innerHTML = `
+      <div class="card glass accent" style="margin-top:var(--sp-3)">
+        <h3 style="margin:0">${esc(b.filename)}</h3>
+        <div class="small muted" style="margin-top:6px">Still being read and checked on the
+          server. Reopen this batch in a minute — the analysis continues whether or not
+          this page is open.</div>
+      </div>`;
+    return;
+  }
+  if (b.status === "failed") {
+    $("#imp-batch").innerHTML = `
+      <div class="card glass" style="margin-top:var(--sp-3)">
+        <div class="finding error"><b>Could not read ${esc(b.filename)}</b>
+          <div class="small mono" style="margin-top:6px">${esc(st.error || "Unknown error")}</div></div>
+      </div>`;
+    return;
+  }
   const pending = groups.filter(g => g.fixable && g.status === "pending").length;
   const sev = st.by_severity || {};
   const cr = b.commit_result || {};
