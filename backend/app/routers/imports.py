@@ -67,6 +67,7 @@ RULE_TITLES = {
     "missing_key": "Rows with no heat number to attach to",
     "heat_no_suspect": "Heat numbers with the wrong number of digits",
     "sheet_missing": "Expected sheet not present",
+    "unit_format": "Routing written as numbers (LRF 6, VD 2, CCM 2)",
 }
 
 

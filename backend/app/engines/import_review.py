@@ -48,6 +48,32 @@ from datetime import date, datetime, time, timedelta
 # ═══════════════════════════════════════════════════════════════════════════
 
 SHEETS = {
+    "Consp": {
+        # THE COMBINED SHEET, added in the 2026 workbook. One row per heat
+        # carrying EAF, LRF, VD and caster together, where the older sheets
+        # split the same heat across four. It is mapped as an EAF-stage row
+        # because that is where its process times sit; the routing columns it
+        # adds (LRF / VD / CCM) are what the split sheets never had in one
+        # place.
+        #
+        # DATA STARTS AT ROW 4 — row 3 is blank in this sheet and only this
+        # sheet, so reading from row 3 would import one empty record per run.
+        "stage": "eaf", "entry": None, "kind": "consumption",
+        "header_row": 2, "data_start": 4,
+        "cols": {"plant_day": 2, "heat_no": 3, "grade": 4,
+                 "lrf_unit": 6, "vd_tank": 7, "caster_no": 8,
+                 "energy_kwh": 9, "section": 10, "lead_seq": 11,
+                 "prev_tap": 12, "power_on": 13, "tap_time": 14,
+                 "setup_min": 15, "ttt": 16,
+                 "lf_power": 19, "aux_power": 20,
+                 "o2_consumption": 22, "hot_metal": 27, "dri_feed": 28,
+                 "hm_pct": 29, "billet_weight": 30, "dri_pct": 31,
+                 "yield_pct": 32, "total_charge": 33, "tap_weight": 34,
+                 "lime": 35, "dololime": 36, "lf_lime": 37,
+                 "tapping_o2": 94, "tap_temp": 95, "tapping_c": 97,
+                 "argon_lrf": 102, "argon_vd": 103, "nitrogen": 105},
+        "mandatory": ["plant_day", "heat_no", "grade"],
+    },
     "EAF Delay": {
         "stage": "eaf", "entry": "eaf", "kind": "delay", "header_row": 2,
         "cols": {"plant_day": 1, "shift": 2, "heat_no": 3,
@@ -148,8 +174,41 @@ def is_error_cell(v) -> bool:
     return isinstance(v, str) and bool(ERR_CELL.match(v.strip()))
 
 
+# Placeholders the plant types to mean "nothing here". Kept as literal values
+# they poison every downstream use: hm_pct = "-" is not a percentage, and a
+# report that averages it either crashes or silently skips the heat.
+NULL_TOKENS = {"", "-", "--", "---", "NA", "N/A", "NIL", "NONE", "#N/A"}
+
+
 def blank(v) -> bool:
-    return v is None or (isinstance(v, str) and not v.strip())
+    if v is None:
+        return True
+    return isinstance(v, str) and v.strip().upper() in NULL_TOKENS
+
+
+def canon_unit(v, kind: str) -> str | None:
+    """Resolve a plant unit written as a bare number.
+
+    The combined Consp sheet records routing as digits — LRF 6, VD 2, CCM 2 —
+    where the older sheets wrote "LRF6" and "VD-2". Excel hands those over as
+    floats, so a literal match sees "6.0" and finds no lane at all.
+    """
+    if blank(v):
+        return None
+    s = str(v).strip().upper().replace(" ", "")
+    if s.endswith(".0"):
+        s = s[:-2]
+    m = re.search(r"([0-9])", s)
+    if not m:
+        return None
+    n = m.group(1)
+    if kind == "lrf":
+        return f"LRF-{n}" if n in ("5", "6") else None
+    if kind == "vd":
+        return f"VD-{n}" if n in ("2", "3") else None
+    if kind == "caster":
+        return f"BC-{n}" if n in ("2", "3") else None
+    return None
 
 
 def canon_heat(v) -> str | None:
@@ -313,10 +372,11 @@ def analyse(wb, limit_rows: int | None = None) -> dict:
         # iter_rows reads each row once, and max_col stops it materialising
         # the thousands of phantom columns after the plant's real data.
         max_col = max(cols.values())
+        start_row = spec.get("data_start", hdr_row + 1)
         for r, tup in enumerate(
-                ws.iter_rows(min_row=hdr_row + 1, max_col=max_col,
+                ws.iter_rows(min_row=start_row, max_col=max_col,
                              values_only=True),
-                start=hdr_row + 1):
+                start=start_row):
             if limit_rows and n_rows >= limit_rows:
                 break
             raw = {f: (tup[c - 1] if c - 1 < len(tup) else None)
@@ -553,6 +613,27 @@ def analyse(wb, limit_rows: int | None = None) -> dict:
                     rec[f] = t
                 elif not blank(v):
                     rec[f] = str(v).strip()
+
+            # Routing written as bare digits becomes the plant's own names, so
+            # the Gantt lanes and the route law see values they recognise.
+            for f, kind in (("lrf_unit", "lrf"), ("vd_tank", "vd"),
+                            ("caster_no", "caster")):
+                if rec.get(f) is not None:
+                    canon = canon_unit(rec[f], kind)
+                    if canon and str(rec[f]) != canon:
+                        issues.append(_issue(
+                            name, r, hn, f, "info", "unit_format",
+                            f"{label_of(f)} written as a number; resolved to "
+                            f"the plant's name for it.",
+                            raw=rec[f], proposed=canon, confidence="high",
+                            basis="The combined sheet records routing as bare "
+                                  "digits (LRF 6, VD 2, CCM 2) where the older "
+                                  "sheets wrote LRF6 and VD-2. Excel hands "
+                                  "those over as floats, so an unresolved "
+                                  "\"6.0\" matches no lane and the heat "
+                                  "vanishes from that section of the chart."))
+                        n_fixed += 1
+                    rec[f] = canon or rec[f]
 
             # mandatory fields still empty after every rule has run
             for f in spec["mandatory"]:
