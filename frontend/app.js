@@ -2216,7 +2216,7 @@ function routeTile(h, readonly) {
     <h3>➡ Process Route Decision — ${h.heat_no}</h3>
     <div class="sub">The route decision belongs to the Shift Engineer. LRF chemistry must be recorded first.
       ${h.route ? `Current route: <b>${h.route}</b>. Re-selection is audited on the timeline.` : "No route selected yet."}</div>
-    <div class="tiles">${["VD-2.1", "VD-2.2", "VD-3.1", "VD-3.2", "BC-2", "BC-3"].map(opt).join("")}</div>
+    <div class="tiles">${["VD-2", "VD-3", "BC-2", "BC-3"].map(opt).join("")}</div>
     ${!canRoute ? `<div class="finding warning" style="margin-top:12px"><b>note</b><div>Your role (${esc(S.user.role)}) cannot select the route — the Shift Engineer decides.</div></div>` : ""}
     <div class="modal-foot"><button class="btn" onclick="UI.closeModal()">Close</button></div>`, m => {
     if (readonly || !canRoute) return;
@@ -2565,7 +2565,7 @@ async function viewSearch(qInit) {
       <label class="fld"><span>Status</span><select id="se-status"><option value="">any</option>
         ${["eaf","zpf","lrf","vd","caster","quality","review","locked","aborted"].map(s=>`<option>${s}</option>`).join("")}</select></label>
       <label class="fld"><span>Shift</span><select id="se-shift"><option value="">any</option><option>A</option><option>B</option><option>C</option></select></label>
-      <label class="fld"><span>Route</span><select id="se-route"><option value="">any</option><option>VD-2.1</option><option>VD-2.2</option><option>VD-3.1</option><option>VD-3.2</option><option>BC-2</option><option>BC-3</option></select></label>
+      <label class="fld"><span>Route</span><select id="se-route"><option value="">any</option><option>VD-2</option><option>VD-3</option><option>BC-2</option><option>BC-3</option></select></label>
       <label class="fld"><span>Plant day</span><input type="date" id="se-day"></label>
       <button class="btn primary" id="se-go">Search</button>
     </div>

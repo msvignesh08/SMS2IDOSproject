@@ -77,7 +77,7 @@ SHEETS = {
         # heat number to the previous tap time and lost all 11,034 of them.
         "stage": "zpf", "entry": "zpf", "kind": "delay", "header_row": 2,
         "cols": {"plant_day": 1, "shift": 2, "heat_no": 3,
-                 "prev_tap": 4, "blow_on": 5, "tap_time": 6,
+                 "prev_tap": 4, "zpf_start": 5, "zpf_end": 6,
                  "ttt": 9,
                  "delay_start": 10, "delay_end": 11, "delay_min": 12,
                  "agency": 13, "delay_code": 14, "delay_remarks": 15},
@@ -96,7 +96,7 @@ SHEETS = {
         "cols": {"plant_day": 1, "lrf_unit": 2, "heat_no": 3, "ladle_no": 4,
                  "liquidus": 5, "grade": 6, "grade_type": 7,
                  "eaf_tap_time": 8, "temp_initial": 10,
-                 "power_on": 12, "lifting_time": 13, "process_time": 14},
+                 "lrf_start": 12, "lrf_end": 13, "process_time": 14},
         "mandatory": ["plant_day", "heat_no"],
     },
     "BC2": {
@@ -104,7 +104,7 @@ SHEETS = {
         "caster": "BC-2",
         "cols": {"plant_day": 1, "shift": 2, "section": 3, "grade_type": 5,
                  "grade": 6, "seq_no": 7, "heat_no": 8, "seq_len": 9,
-                 "turret_time": 10, "prep_time": 11, "delay_min": 12,
+                 "cast_start": 10, "prep_time": 11, "delay_min": 12,
                  "agency": 13, "delay_code": 14},
         "mandatory": ["plant_day", "shift", "heat_no"],
     },
@@ -113,7 +113,7 @@ SHEETS = {
         "caster": "BC-3",
         "cols": {"plant_day": 1, "shift": 2, "section": 3, "grade_type": 5,
                  "grade": 6, "seq_no": 7, "heat_no": 8, "seq_len": 9,
-                 "turret_time": 10, "prep_time": 11, "delay_min": 12,
+                 "cast_start": 10, "prep_time": 11, "delay_min": 12,
                  "agency": 13, "delay_code": 14},
         "mandatory": ["plant_day", "shift", "heat_no"],
     },
@@ -441,7 +441,8 @@ def analyse(wb, limit_rows: int | None = None) -> dict:
 
             # ── times, undoing the 1900 roll ─────────────────────────────
             for f in ("power_on", "tap_time", "delay_start", "delay_end",
-                      "blow_on", "prev_tap", "turret_time", "eaf_tap_time"):
+                      "zpf_start", "zpf_end", "lrf_start", "lrf_end",
+                      "cast_start", "prev_tap", "eaf_tap_time"):
                 if f not in cols:
                     continue
                 t, rolled = canon_time(raw.get(f))

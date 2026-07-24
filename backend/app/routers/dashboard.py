@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
-from sqlalchemy.orm import Session as DBSession
+from sqlalchemy.orm import Session as DBSession, joinedload
 from ..core.database import get_db
 from ..core import plant_time
 from .. import models as M
@@ -298,10 +298,8 @@ GANTT_MACHINES = [
     ("ZPF", "Zero Power Furnace", ["zpf"]),
     ("LRF-5", "Ladle Refining Furnace 5", ["lrf"]),
     ("LRF-6", "Ladle Refining Furnace 6", ["lrf"]),
-    ("VD-2.1", "VD Tank 2.1", ["vd"]),
-    ("VD-2.2", "VD Tank 2.2", ["vd"]),
-    ("VD-3.1", "VD Tank 3.1", ["vd"]),
-    ("VD-3.2", "VD Tank 3.2", ["vd"]),
+    ("VD-2", "Vacuum Degasser 2", ["vd"]),
+    ("VD-3", "Vacuum Degasser 3", ["vd"]),
     ("BC-2", "Billet Caster 2", ["caster"]),
     ("BC-3", "Billet Caster 3", ["caster"]),
     ("QLAB", "Quality Laboratory", ["quality"]),
@@ -313,23 +311,60 @@ SHUTDOWN_MIN = 60.0
 # operator-entered process timestamps and fall back to record timestamps
 # only when those are absent (constitution: nothing without a timeline —
 # and the timeline is the plant's, not the keyboard's).
+# Each stage lists CANDIDATE start and end fields, tried in order.
+#
+# Live entry and imported history do not always name the same instant the same
+# way: the app asks an operator for "LRF Start", while the plant's workbook
+# recorded "LRF Power On Time". Both mark when the ladle went under the arc.
+# Listing alternatives lets one chart draw both without rewriting records that
+# are already in the database.
 STAGE_TIME_FIELDS = {
-    "eaf": ("power_on", "tap_end"),
-    "zpf": ("zpf_start", "zpf_end"),
-    "lrf": ("lrf_start", "lrf_end"),
-    "vd": ("vd_start", "vd_end"),
-    "caster": ("cast_start", "cast_end"),
+    "eaf": (("power_on",), ("tap_end", "tap_time", "tap_start")),
+    "zpf": (("zpf_start", "blow_on"), ("zpf_end", "tap_time")),
+    "lrf": (("lrf_start", "power_on"), ("lrf_end", "lifting_time", "power_off")),
+    "vd": (("vd_start",), ("vd_end",)),
+    "caster": (("cast_start", "turret_time"), ("cast_end",)),
 }
 
 
-def _proc_dt(v):
-    """Parse an operator-entered datetime-local value; None if absent/invalid."""
+def _first_time(d, names, on_day):
+    """First of the candidate fields that yields a usable time."""
+    for n in names:
+        t = _proc_dt(d.get(n), on_day)
+        if t:
+            return t
+    return None
+
+
+def _proc_dt(v, on_day=None):
+    """Parse an operator-entered process time.
+
+    Live entry gives a full datetime-local value. Imported history gives a
+    bare clock face — "21:40" — because that is all the paper log held, so it
+    needs the record's plant day to become a point in time. Without that the
+    plant's own history could not draw on its own Gantt.
+
+    THE 22:00 ROLLOVER: plant day D runs 22:00 on D-1 through 21:59 on D. So a
+    clock time at or after 22:00 happened on the calendar day BEFORE the plant
+    day it is filed under, and anything earlier happened on the plant day
+    itself. 23:41 on plant day 31-Mar is calendar 30-Mar; 21:40 is 31-Mar.
+    """
     if not v:
         return None
+    txt = str(v).strip()
     try:
-        return datetime.fromisoformat(str(v))
+        return datetime.fromisoformat(txt)
     except ValueError:
+        pass
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", txt)
+    if not m or on_day is None:
         return None
+    hh, mm = int(m.group(1)), int(m.group(2))
+    if hh > 23 or mm > 59:
+        return None
+    base = datetime(on_day.year, on_day.month, on_day.day, hh, mm,
+                    int(m.group(3) or 0))
+    return base - timedelta(days=1) if hh >= 22 else base
 
 
 def _machine_for(stage: str, heat: M.Heat, data: dict | None = None) -> str | None:
@@ -343,7 +378,7 @@ def _machine_for(stage: str, heat: M.Heat, data: dict | None = None) -> str | No
         # the route decision picked one directly, and is "ZPF" for any heat
         # that went through the ZPF, so it cannot lead.
         rr = heat.route_refining if heat.route_refining in ("LRF-5", "LRF-6") else None
-        return data.get("lrf_unit") or rr or "LRF-5"
+        return canon_lrf(data.get("lrf_unit")) or rr or "LRF-5"
     if stage == "vd":
         # The tank the heat actually sat in: the operator's entry first, then
         # the route (which IS the tank now), and finally the legacy degasser
@@ -361,23 +396,37 @@ def _machine_for(stage: str, heat: M.Heat, data: dict | None = None) -> str | No
     return None
 
 
-def HM_canon_vd(v):
-    """Resolve any VD identifier onto one of the four tank lanes.
+def canon_lrf(v):
+    """Resolve any LRF spelling onto its lane.
 
-    Accepts "VD-2.1" (current), "VD-2" (legacy, pre-split) and bare "2.1"/"2"
-    as the consumption sheets write them. A legacy degasser maps to its FIRST
-    tank: the heat definitely used one of that degasser's two, and .1 is the
-    only defensible choice — better a real lane than none.
+    The plant's workbook writes "LRF5" and the app writes "LRF-5"; both name
+    the same furnace. Matched literally, 2,984 of 2,986 imported refining
+    records missed their lane and the LRF section of the chart stayed empty.
+    """
+    s = str(v or "").strip().upper().replace(" ", "")
+    if not s:
+        return None
+    m = re.fullmatch(r"(?:LRF[-_]?)?([56])", s)
+    return f"LRF-{m.group(1)}" if m else None
+
+
+def HM_canon_vd(v):
+    """Resolve any VD identifier onto one of the two degasser lanes.
+
+    The plant tracks VD-2 and VD-3. Records written while the tanks were split
+    still read "VD-2.1" or "VD-3.2", and the consumption sheets write bare
+    "2.1" or "3" — every one of those names one of the two degassers, so they
+    collapse onto it rather than being dropped.
     """
     s = str(v or "").strip().upper().replace(" ", "")
     if not s:
         return None
     # Anchored, and any other letters disqualify it: a bare digit search would
     # read the "2" out of "BC-2" and put a caster-routed heat on a VD lane.
-    m = re.fullmatch(r"(?:VD[-_]?)?([23])(?:[.\-]([12]))?", s)
+    m = re.fullmatch(r"(?:VD[-_]?)?([23])(?:[.\-][12])?", s)
     if not m:
         return None
-    return f"VD-{m.group(1)}.{m.group(2) or '1'}"
+    return f"VD-{m.group(1)}"
 
 
 def _collect_window(db, w0, w1, now_at, include_locked=True):
@@ -385,23 +434,87 @@ def _collect_window(db, w0, w1, now_at, include_locked=True):
     # No created_at cutoff: a heat's bars live on the plant day of its
     # PROCESS times, which back-entry can place before the record existed.
     # The per-bar window test below is the only inclusion rule.
+    # NARROW IN SQL, THEN LOAD IN BULK.
+    #
+    # This used to fetch every heat in the database and then run one query per
+    # heat for its records, its delays and its events. With the plant's real
+    # history loaded — 17,911 heats — that is over 50,000 round trips for a
+    # single chart, and the page took tens of seconds. It now asks for the
+    # days on screen and fetches each table once.
+    #
+    # THE MARGIN IS NOT COSMETIC. A bar is placed by its PROCESS times, and
+    # those can sit well away from the day the record was filed under: an
+    # engineer entering Friday's heats on Monday creates records dated Monday
+    # whose bars belong on Friday. Filtering tightly on the record's own day
+    # dropped exactly those heats — the back-entry case the old full scan
+    # handled by accident.
+    #
+    # 31 days matches the widest span the Digital Time Machine offers, so any
+    # heat this chart can display is inside it, while a recent window still
+    # excludes the overwhelming majority of a loaded year of history.
+    margin = timedelta(days=31)
     heats = (db.query(M.Heat)
-             .filter(M.Heat.archived == False,          # noqa: E712
-                     M.Heat.is_training == False).all())  # noqa: E712
+             .filter(M.Heat.archived == False,            # noqa: E712
+                     M.Heat.is_training == False,         # noqa: E712
+                     M.Heat.plant_day >= (w0 - margin).date(),
+                     M.Heat.plant_day <= (w1 + margin).date())
+             .all())
+    if not heats:
+        return []
+    ids = [h.id for h in heats]
+
+    recs_by: dict[int, list] = {i: [] for i in ids}
+    for r in db.query(M.StageRecord).filter(M.StageRecord.heat_id.in_(ids)):
+        recs_by[r.heat_id].append(r)
+    delays_by: dict[int, list] = {i: [] for i in ids}
+    for dl in (db.query(M.Delay).options(joinedload(M.Delay.reason))
+               .filter(M.Delay.heat_id.in_(ids),
+                       M.Delay.superseded == False)):                  # noqa: E712
+        delays_by[dl.heat_id].append(dl)
+    events_by: dict[int, list] = {i: [] for i in ids}
+    for e in (db.query(M.HeatEvent)
+              .filter(M.HeatEvent.heat_id.in_(ids),
+                      M.HeatEvent.at >= w0, M.HeatEvent.at <= w1,
+                      M.HeatEvent.kind.in_(["route_selected", "approval", "locked",
+                                            "unlocked", "aborted", "validation",
+                                            "correction"]))):
+        events_by[e.heat_id].append(e)
+
     picked = []
     for h in heats:
-        recs = db.query(M.StageRecord).filter_by(heat_id=h.id).all()
+        recs = recs_by.get(h.id, [])
         bars = []
         for r in recs:
-            if not r.started_at:
-                continue
             d = r.data or {}
+            f0, f1 = STAGE_TIME_FIELDS.get(r.stage, ((), ()))
+            day = r.plant_day or h.plant_day
+            p0 = _first_time(d, f0, day)
+            p1 = _first_time(d, f1, day)
+            # A stage ENDS AFTER IT BEGINS. Resolving each clock face against
+            # the plant day independently can invert them: a heat with power
+            # on at 21:40 and tap at 22:32 has its tap pushed to the previous
+            # evening, because 22:00 opens the plant day. The tap is 52
+            # minutes later, not 23 hours earlier — so an end that lands
+            # before its start belongs to the following day.
+            if p0 and p1 and p1 < p0:
+                p1 += timedelta(days=1)
+            if not r.started_at:
+                # A record with no entry timestamp can still have a real
+                # PROCESS timeline. Every imported heat is like this: the
+                # workbook recorded when power went on and when the heat
+                # tapped, but nobody typed it into this app, so started_at is
+                # null. Skipping those drew a blank chart for every past day —
+                # the plant's own history was invisible on its own Gantt.
+                if not (p0 or p1):
+                    continue
+                anchor = p0 or p1
+                r_started, r_submitted = anchor, (p1 or p0)
+            else:
+                r_started, r_submitted = r.started_at, r.submitted_at
             live = r.status == "in_progress" and h.status not in ("locked", "aborted")
-            b0 = r.started_at
-            b1 = r.submitted_at or (now_at if h.status not in ("locked", "aborted") else r.started_at)
+            b0 = r_started
+            b1 = r_submitted or (now_at if h.status not in ("locked", "aborted") else r_started)
             # Prefer the plant's own clock: operator-entered process times.
-            f0, f1 = STAGE_TIME_FIELDS.get(r.stage, (None, None))
-            p0, p1 = _proc_dt(d.get(f0)) if f0 else None, _proc_dt(d.get(f1)) if f1 else None
             if p0:
                 b0 = p0
                 b1 = now_at if live else max(b1, p0)
@@ -430,7 +543,7 @@ def _collect_window(db, w0, w1, now_at, include_locked=True):
             continue
         bars.sort(key=lambda b: b["start"])
         delays = []
-        for dl in db.query(M.Delay).filter_by(heat_id=h.id, superseded=False):
+        for dl in delays_by.get(h.id, []):
             d0, d1 = dl.start_time, (dl.end_time or now_at)
             if d1 < w0 or d0 > w1:
                 continue
@@ -446,12 +559,7 @@ def _collect_window(db, w0, w1, now_at, include_locked=True):
                            "reason": dl.reason.reason if dl.reason else dl.remarks,
                            "shift_at_start": plant_time.resolve(max(d0, w0)).shift})
         events = []
-        for e in (db.query(M.HeatEvent)
-                  .filter(M.HeatEvent.heat_id == h.id,
-                          M.HeatEvent.at >= w0, M.HeatEvent.at <= w1,
-                          M.HeatEvent.kind.in_(["route_selected", "approval", "locked",
-                                                "unlocked", "aborted", "validation",
-                                                "correction"]))):
+        for e in events_by.get(h.id, []):
             if e.kind == "validation" and "0 error" in (e.detail or ""):
                 continue
             rec_d = next((r.data or {} for r in recs if r.stage == e.stage), {}) if e.stage else {}

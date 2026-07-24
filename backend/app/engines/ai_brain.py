@@ -109,7 +109,7 @@ TOOLS = [
                 "entry_stage": {"type": "string", "enum": ["eaf", "zpf"],
                                 "description": "Which furnace the heat started in."},
                 "route": {"type": "string",
-                          "description": "VD-2.1 / VD-2.2 / VD-3.1 / VD-3.2 / BC-2 / BC-3"},
+                          "description": "VD-2 / VD-3 / BC-2 / BC-3"},
                 "status": {"type": "string",
                            "description": "created|eaf|zpf|lrf|vd|caster|review|locked"},
                 "with_delays_only": {"type": "boolean",
@@ -416,7 +416,7 @@ THIS PLANT, SPECIFICALLY
 - Two entry furnaces. A heat starts in EITHER the EAF (heat numbers E…) or \
 the ZPF, the Zero Power Furnace (heat numbers F…). Never both.
 - After melting: LRF-5 or LRF-6 for ladle refining, then a route decision \
-that picks a VD tank (VD-2.1, VD-2.2, VD-3.1, VD-3.2) or goes direct to a \
+that picks a vacuum degasser (VD-2 or VD-3) or goes direct to a \
 caster (BC-2, BC-3). Ladle transfer cars move ladles between them.
 - The plant day runs 22:00 to 22:00 and is opened by C shift. Shifts are A, \
 B and C. A heat recorded at 23:41 belongs to the NEXT calendar day's plant day.

@@ -23,7 +23,7 @@ def F(key, label, type="number", req=False, auto=False, options=None, unit="", s
 # tank itself rather than the degasser. Declared once and imported everywhere
 # it is tested — the route law, the gates, the Gantt lanes, the equipment
 # master and the pickers all read this tuple, so a fifth tank is one edit.
-VD_ROUTES = ("VD-2.1", "VD-2.2", "VD-3.1", "VD-3.2")
+VD_ROUTES = ("VD-2", "VD-3")
 CASTER_ROUTES = ("BC-2", "BC-3")
 ALL_ROUTES = VD_ROUTES + CASTER_ROUTES
 
@@ -312,7 +312,7 @@ STAGE_DEFS = {
         "optional": True,   # only on VD routes
         "tiles": [
             {"key": "vacuum", "label": "Vacuum Operation", "icon": "🌀", "fields": [
-                F("vd_tank", "VD Tank", "select", options=list(VD_ROUTES)),
+                F("vd_tank", "VD Unit", "select", options=list(VD_ROUTES)),
                 F("vd_start", "VD Start Time", "time", req=True),
                 F("argon_vd", "Argon (VD)", unit="Nm³"),
                 F("nitrogen_vd", "Nitrogen (VD)", unit="Nm³"),

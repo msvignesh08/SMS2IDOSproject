@@ -442,15 +442,11 @@ def canon_unit(v, kind):
     if kind == "lrf":
         return f"LRF-{n}" if n in ("5", "6") else None
     if kind == "vd":
-        # The route IS the tank now (VD-2.1 / 2.2 / 3.1 / 3.2). The workbook
-        # only ever names the degasser — "VD-2", or a bare 2.1 — so a plain
-        # degasser resolves to its FIRST tank: the heat used one of that
-        # degasser's two, and .1 is the only defensible choice. Better a real
-        # tank than a route value the app no longer accepts.
-        if n not in ("2", "3"):
-            return None
-        sub = re.search(rf"{n}[.\-]([12])", s)
-        return f"VD-{n}.{sub.group(1) if sub else '1'}"
+        # The plant tracks two degassers, VD-2 and VD-3. The workbook writes
+        # them several ways — "VD-2", a bare "2", or a tank-level "2.1" from
+        # when the tanks were listed separately — and all of them name one of
+        # the two, so the sub-tank digit is dropped rather than the row.
+        return f"VD-{n}" if n in ("2", "3") else None
     if kind == "ccm":
         return f"BC-{n}" if n in ("2", "3") else None
     return None

@@ -123,7 +123,7 @@ call("PUT", f"/api/heats/{HN}/stages/lrf", {"data": {
     "temp_initial": 1580, "temp_final": 1602}}, token=t_op)
 
 # route before chemistry must fail (6D.16)
-r = call("POST", f"/api/heats/{HN}/route", {"route": "VD-2.1"}, token=t_se, expect_ok=False)
+r = call("POST", f"/api/heats/{HN}/route", {"route": "VD-2"}, token=t_se, expect_ok=False)
 assert r["__status"] == 400 and "Chemistry" in r["detail"], r
 print("ROUTE-BEFORE-CHEMISTRY BLOCKED OK (6D.16)")
 
@@ -131,7 +131,7 @@ call("POST", f"/api/heats/{HN}/stages/lrf/chemistry",
      {"label": "LRF", "values": {"C": 0.12, "Si": 0.05, "Mn": 0.35, "S": 0.020, "P": 0.012}}, token=t_op)
 
 # operator must NOT be able to select route (5.8)
-r = call("POST", f"/api/heats/{HN}/route", {"route": "VD-2.1"}, token=t_op, expect_ok=False)
+r = call("POST", f"/api/heats/{HN}/route", {"route": "VD-2"}, token=t_op, expect_ok=False)
 assert r["__status"] == 403, r
 print("ROUTE RESTRICTED TO SHIFT ENGINEER OK (5.8)")
 
@@ -146,12 +146,12 @@ miss = call("POST", "/api/calculator/alloys", {"current": {"Si": ""}, "target": 
 assert miss["ok"] is False and miss["missing"], miss
 print("7.10 NEVER-GUESS OK — engine states required inputs:", miss["missing"])
 
-call("POST", f"/api/heats/{HN}/route", {"route": "VD-2.1"}, token=t_se)
+call("POST", f"/api/heats/{HN}/route", {"route": "VD-2"}, token=t_se)
 r = call("POST", f"/api/heats/{HN}/stages/lrf/submit", token=t_op)
 assert r["ok"], r
 h2 = call("GET", f"/api/heats/{HN}", token=t_op)
 assert h2["gates"]["vd"]["state"] == "open", h2["gates"]
-print("LRF SUBMITTED, ROUTE VD-2.1 — VD unlocked, caster gated:", h2["gates"]["caster"]["state"])
+print("LRF SUBMITTED, ROUTE VD-2 — VD unlocked, caster gated:", h2["gates"]["caster"]["state"])
 
 # ── VD
 call("PUT", f"/api/heats/{HN}/stages/vd", {"data": {
@@ -331,7 +331,7 @@ lanes = [r["key"] for r in gm["rows"]]
 assert "HM-BAY" not in gm["machines"], "the hot metal bay is no longer a lane"
 assert not [m for m in gm["machines"] if "LTC" in m],     f"transfer cars are not machine lanes: {gm['machines']}"
 _order = ["EAF", "ZPF", "LRF-5", "LRF-6",
-          "VD-2.1", "VD-2.2", "VD-3.1", "VD-3.2",
+          "VD-2", "VD-3",
           "BC-2", "BC-3", "QLAB"]
 assert gm["machines"] == _order, f"lane order is EAF, ZPF, LRF, VD, BC: {gm['machines']}"
 
@@ -341,7 +341,7 @@ assert lrf6 and lrf6["bars"], "LRF bar must land in the LRF-6 lane per lrf_unit"
 assert lrf6["bars"][0]["start"].startswith("2026-07-16 09:15"),     f"LRF bar must carry the operator-entered process time: {lrf6['bars'][0]}"
 other = next((r for r in gm["rows"] if r["key"] == "LRF-5"), None)
 assert other is not None and not other["bars"], "this heat never ran on LRF-5"
-print("GANTT LANES OK — EAF, ZPF, LRF-5/6, 4 VD tanks, 2 casters, in process order")
+print("GANTT LANES OK — EAF, ZPF, LRF-5/6, 2 vacuum degassers, 2 casters, in process order")
 
 # Machine intelligence board
 mb = call("GET", "/api/machines", token=t_se)
@@ -350,14 +350,14 @@ assert "state" in eaf_m and "utilization_pct" in eaf_m
 print("MACHINE BOARD OK —", ", ".join(f"{x['code']}:{x['state']}" for x in mb["machines"][:6]))
 
 # Equipment governance: maintenance state
-call("POST", "/api/admin/equipment/VD-3.1/status",
+call("POST", "/api/admin/equipment/VD-3/status",
      {"status": "maintenance", "reauth_password": "admin@123"}, token=adm2)
 mb2 = call("GET", "/api/machines", token=t_se)
-vd3 = next((x for x in mb2["machines"] if x["code"] == "VD-3.1"), None)
+vd3 = next((x for x in mb2["machines"] if x["code"] == "VD-3"), None)
 if vd3: assert vd3["state"] == "MAINTENANCE", vd3
-call("POST", "/api/admin/equipment/VD-3.1/status",
+call("POST", "/api/admin/equipment/VD-3/status",
      {"status": "available", "reauth_password": "admin@123"}, token=adm2)
-print("EQUIPMENT GOVERNANCE OK — VD-3.1 maintenance state declared & cleared")
+print("EQUIPMENT GOVERNANCE OK — VD-3 maintenance state declared & cleared")
 
 # AI Production Engineer: insights + all five modes + never-guess honesty
 ai = call("GET", "/api/ai/insights", token=t_se)
@@ -658,12 +658,12 @@ assert p1["heats"]["sig"] == p2["heats"]["sig"], "heat signature must be stable"
 assert p1["machines"]["sig"] == p2["machines"]["sig"], "machine signature must be stable"
 assert p1["users"]["sig"] == p2["users"]["sig"], "user signature must be stable"
 # a real change must move exactly the right signature
-call("POST", "/api/admin/equipment/VD-3.1/status",
+call("POST", "/api/admin/equipment/VD-3/status",
      {"status": "maintenance", "reason": "pulse test", "reauth_password": "admin@123"}, token=adm2)
 p3 = call("GET", "/api/pulse", token=t_se)
 assert p3["machines"]["sig"] != p2["machines"]["sig"], "machine change must move the machine signature"
 assert p3["heats"]["sig"] == p2["heats"]["sig"], "a machine change must NOT disturb the heat component"
-call("POST", "/api/admin/equipment/VD-3.1/status",
+call("POST", "/api/admin/equipment/VD-3/status",
      {"status": "available", "reason": "restore", "reauth_password": "admin@123"}, token=adm2)
 print(f"PULSE OK — 8 domains, {_lat*1000:.0f}ms, signatures stable when idle, isolated per component")
 
