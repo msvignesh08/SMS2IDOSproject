@@ -47,10 +47,9 @@ services:
       - key: SMS2_PLANT_TZ
         value: Asia/Kolkata
       # Wired automatically from the database declared above — nothing to
-      # paste, and no chance of pasting the External URL by mistake. The
-      # driver (psycopg2-binary) is already in requirements.txt, and
-      # config.py normalises Render's `postgres://` scheme, which SQLAlchemy
-      # 2 rejects.
+      # paste, and no chance of pasting the External URL by mistake. Both
+      # PostgreSQL drivers are installed; config.py explicitly selects
+      # postgresql+psycopg so SQLAlchemy 2.0 and 2.1 behave consistently.
       - key: SMS2_DATABASE_URL
         fromDatabase:
           name: sms2-db
