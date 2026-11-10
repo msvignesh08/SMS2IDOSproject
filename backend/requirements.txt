@@ -3,10 +3,11 @@ uvicorn[standard]>=0.29
 sqlalchemy>=2.0
 openpyxl>=3.1
 python-multipart>=0.0.9
-# PostgreSQL driver. Installed unconditionally so a deployment can be switched
-# to Postgres by setting SMS2_DATABASE_URL alone, with no rebuild of the
-# dependency list. Unused when the URL is blank — SQLite remains the
-# zero-setup default for local runs and demos.
+# PostgreSQL drivers. SQLAlchemy 2.1 defaults postgresql:// URLs to Psycopg 3,
+# while SQLAlchemy 2.0 defaults to Psycopg 2. Install both so existing
+# postgresql+psycopg2 URLs remain supported and either SQLAlchemy generation
+# can connect without changing the dependency list.
+psycopg[binary]>=3.2,<4
 psycopg2-binary>=2.9
 # Claude API client for the AI Production Engineer's reasoning layer. Optional
 # at runtime: with no ANTHROPIC_API_KEY the app never imports it and falls back
